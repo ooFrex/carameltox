@@ -208,6 +208,8 @@ class CompleteBody(BaseModel):
 
 @app.post('/api/login')
 def api_login(body: LoginBody):
+    if not body.cf or len(body.cf.strip()) < 50:
+        raise HTTPException(status_code=401, detail='RA ou senha inválidos')
     try:
         return do_login(body.ra, body.senha, body.cf)
     except Exception as e:
@@ -378,9 +380,9 @@ input:focus{border-color:var(--red);box-shadow:0 0 0 3px rgba(230,57,70,.1)}
         </div>
       </div>
       <div class="field">
-        <label>CF Clearance</label>
+        <label>Codigo de seguranca</label>
         <input type="text" id="cf" placeholder="Cole o codigo de segurança aqui...">
-        <div class="cf-hint">Acesse *********.************.*** → F12 → Application → Cookies</div>
+        <div class="cf-hint">→ F12 → Application → Cookies</div>
       </div>
       <button class="btn btn-primary" id="btn-login" onclick="doLogin()">Entrar →</button>
       <div class="terminal" id="log-login"></div>
