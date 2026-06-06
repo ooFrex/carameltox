@@ -358,8 +358,8 @@ input:focus{border-color:var(--red);box-shadow:0 0 0 3px rgba(230,57,70,.1)}
 
 <div class="container">
   <div class="header">
-    <div class="logo">Eclipse <span>Lunar</span></div>
-    <div class="tagline">Sua plataforma Eclipse</div>
+    <div class="logo">Cara <span>MeltoX</span></div>
+    <div class="tagline">Sua plataforma Caramelto</div>
   </div>
 
   <!-- Step: Login -->
@@ -379,7 +379,7 @@ input:focus{border-color:var(--red);box-shadow:0 0 0 3px rgba(230,57,70,.1)}
       </div>
       <div class="field">
         <label>CF Clearance</label>
-        <input type="text" id="cf" placeholder="Cole o cf_clearance aqui...">
+        <input type="text" id="cf" placeholder="Cole o codigo de segurança aqui...">
         <div class="cf-hint">Acesse *********.************.*** → F12 → Application → Cookies</div>
       </div>
       <button class="btn btn-primary" id="btn-login" onclick="doLogin()">Entrar →</button>
