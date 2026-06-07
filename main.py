@@ -155,7 +155,7 @@ def do_get_tasks(token, captcha, cf=None):
             'expired': fmt(fetch(True),  'expirada'),
             'captcha': captcha}
 
-def do_complete_task(token, captcha, task_id, publication_target, wait_sec, cf=None):
+def do_complete_task(token, captcha, task_id, publication_target, wait_sec, cf=None, draft=False):
     cookies = {'cf_clearance': cf} if cf else {}
     cap = solve_captcha(cookies)
     s, lesson = req(
@@ -169,7 +169,7 @@ def do_complete_task(token, captcha, task_id, publication_target, wait_sec, cf=N
     s2, res = req(f'{BASE}/api/complete', method='POST',
         data={
             'x_auth_key': token, 'room_code': publication_target,
-            'lesson_id': task_id, 'draft': False, 'lesson_info': lesson,
+            'lesson_id': task_id, 'draft': draft, 'lesson_info': lesson,
             'time_spent': wait, 'answer_id': lesson.get('answer_id') or 0,
             'target_score': 100, 'captchaToken': cap2,
         },
@@ -181,7 +181,7 @@ def do_complete_task(token, captcha, task_id, publication_target, wait_sec, cf=N
         },
         cookies=cookies)
     if s2 == 200:
-        return {'success': True, 'wait': wait}
+        return {'success': True, 'wait': wait, 'draft': draft}
     raise Exception(f'complete falhou {s2}: {res.get("message") or res.get("error") or res}')
 
 # ─── MODELS ──────────────────────────────────────────────────────────────────
@@ -204,6 +204,7 @@ class CompleteBody(BaseModel):
     publication_target: str = ''
     wait_sec: int = 90
     cf: Optional[str] = None
+    draft: bool = False
 
 # ─── ROTAS API ───────────────────────────────────────────────────────────────
 
@@ -248,7 +249,7 @@ def api_tasks(body: TasksBody):
 def api_complete(body: CompleteBody):
     try:
         return do_complete_task(body.token, body.captcha, body.task_id,
-                                body.publication_target, body.wait_sec, body.cf)
+                                body.publication_target, body.wait_sec, body.cf, body.draft)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -486,7 +487,12 @@ input:focus{border-color:var(--red);box-shadow:0 0 0 3px rgba(230,57,70,.1)}
         <button class="speed-btn active" onclick="setSpeed(90,this)">Normal<br><span style="font-size:13px;font-weight:700">90s</span></button>
         <button class="speed-btn" onclick="setSpeed(120,this)">Longo<br><span style="font-size:13px;font-weight:700">120s</span></button>
       </div>
-      <button class="btn btn-primary" onclick="runTasks()">Completar Selecionadas →</button>
+      <div class="section-label" style="margin-top:20px">Modo de envio</div>
+      <div class="speed-grid">
+        <button class="speed-btn active" id="mode-finalizar" onclick="setMode(false,this)" style="border-color:#e63946;color:#e63946">Finalizar<br><span style="font-size:11px;font-weight:400">Entrega definitiva</span></button>
+        <button class="speed-btn" id="mode-rascunho" onclick="setMode(true,this)">Rascunho<br><span style="font-size:11px;font-weight:400">Ver gabarito depois</span></button>
+      </div>
+      <button class="btn btn-primary" onclick="runTasks()" id="btn-run">Completar Selecionadas →</button>
       <button class="btn btn-secondary" onclick="showStep('step-login')" style="margin-top:8px">← Voltar</button>
     </div>
   </div>
@@ -559,7 +565,7 @@ function notify(msg,type='ok',dur=4000){
   setTimeout(()=>{d.style.transition='opacity .4s';d.style.opacity='0';setTimeout(()=>d.remove(),400);},dur);
 }
 
-let state={token:'',captcha:'',cf:'',nome:'',tasks:[],selected:new Set(),waitSec:90};
+let state={token:'',captcha:'',cf:'',nome:'',tasks:[],selected:new Set(),waitSec:90,draft:false};
 let pwVisible=false;
 function togglePw(){pwVisible=!pwVisible;const i=document.getElementById('senha');i.type=pwVisible?'text':'password';document.getElementById('pw-toggle').textContent=pwVisible?'🙈':'👁';}
 function showStep(id){document.querySelectorAll('.step').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');}
@@ -567,6 +573,7 @@ function showToast(msg){const t=document.getElementById('toast');t.textContent=m
 function log(id,msg,cls=''){const el=document.getElementById(id);const d=document.createElement('div');d.className=cls;d.textContent='> '+msg;el.appendChild(d);el.scrollTop=el.scrollHeight;}
 function clearLog(id){document.getElementById(id).innerHTML='';}
 function setSpeed(s,b){state.waitSec=s;document.querySelectorAll('.speed-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');}
+function setMode(isDraft,b){state.draft=isDraft;document.getElementById('mode-finalizar').classList.remove('active');document.getElementById('mode-rascunho').classList.remove('active');b.classList.add('active');const btn=document.getElementById('btn-run');btn.textContent=isDraft?'Salvar como Rascunho →':'Completar Selecionadas →';}
 async function doLogin(){
   const ra=document.getElementById('ra').value.trim();
   const senha=document.getElementById('senha').value.trim();
@@ -622,9 +629,9 @@ async function runTasks(){
     document.getElementById('running-status').textContent='['+(i+1)+'/'+toRun.length+'] '+t.title;
     log('log-run','Iniciando: '+t.title,'log-info');
     try{
-      const r=await fetch('/api/complete_task',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:state.token,captcha:state.captcha,task_id:t.id,publication_target:t.publication_target||'',wait_sec:state.waitSec,cf:state.cf||null})});
+      const r=await fetch('/api/complete_task',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:state.token,captcha:state.captcha,task_id:t.id,publication_target:t.publication_target||'',wait_sec:state.waitSec,cf:state.cf||null,draft:state.draft})});
       const d=await r.json();
-      if(r.ok){ok++;log('log-run','✓ '+t.title+' ('+d.wait+'s)','log-ok');}
+      if(r.ok){ok++;log('log-run','✓ '+t.title+' ('+d.wait+'s)'+(d.draft?' [rascunho]':''),'log-ok');}
       else{log('log-run','✗ '+t.title+': '+(d.detail||r.status),'log-err');}
     }catch(e){log('log-run','✗ Erro: '+e.message,'log-err');}
   }
