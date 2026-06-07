@@ -1297,5 +1297,3 @@ async function runTasks(){
 </script>
 </body>
 </html>"""
-
-//michael jackison
