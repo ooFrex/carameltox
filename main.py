@@ -1161,6 +1161,46 @@ body::after{
 }
 .opt-btn.active .opt-sub{color:rgba(255,0,56,0.6)}
 
+/* Drum picker */
+.drum-row{display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:16px}
+.drum-block{display:flex;flex-direction:column;align-items:center;gap:8px}
+.drum-label{font-size:10px;letter-spacing:3px;color:var(--muted);font-family:'Share Tech Mono',monospace}
+.drum-sep{font-size:22px;color:var(--border2);margin-top:20px;user-select:none}
+.drum-wrap{
+  position:relative;width:90px;height:150px;
+  background:var(--bg);border:1px solid var(--border2);border-radius:12px;
+  overflow:hidden;cursor:ns-resize;user-select:none;
+}
+.drum-track{
+  position:absolute;left:0;right:0;top:0;
+  display:flex;flex-direction:column;align-items:center;
+  transition:transform 0.15s cubic-bezier(.25,.8,.25,1);
+}
+.drum-item{
+  height:50px;width:100%;display:flex;align-items:center;justify-content:center;
+  font-family:'Share Tech Mono','Orbitron',monospace;font-size:28px;font-weight:700;
+  color:rgba(255,255,255,0.2);letter-spacing:2px;flex-shrink:0;
+  transition:color 0.15s,font-size 0.15s;
+}
+.drum-item.active{color:var(--text);font-size:34px}
+.drum-item.near{color:rgba(255,255,255,0.5);font-size:28px}
+.drum-overlay-top{
+  position:absolute;top:0;left:0;right:0;height:50px;pointer-events:none;
+  background:linear-gradient(to bottom,var(--bg) 0%,transparent 100%);z-index:2;
+}
+.drum-overlay-bot{
+  position:absolute;bottom:0;left:0;right:0;height:50px;pointer-events:none;
+  background:linear-gradient(to top,var(--bg) 0%,transparent 100%);z-index:2;
+}
+.drum-selector{
+  position:absolute;top:50%;left:10%;right:10%;height:50px;
+  transform:translateY(-50%);
+  border-top:1px solid rgba(255,0,56,0.4);
+  border-bottom:1px solid rgba(255,0,56,0.4);
+  pointer-events:none;z-index:3;
+  box-shadow:0 0 10px rgba(255,0,56,0.1) inset;
+}
+
 /* Progress / terminal */
 .prog-wrap{background:var(--border);border-radius:4px;height:2px;margin-top:16px;overflow:hidden}
 .prog-bar{height:100%;background:linear-gradient(90deg,var(--red),var(--red3));width:0%;transition:width 0.5s ease;box-shadow:0 0 8px var(--redglow)}
@@ -1630,10 +1670,26 @@ body::after{
               <ul class="task-list" id="list-expired"></ul>
             </div>
             <div class="task-section-title" style="margin-top:22px">Tempo por atividade</div>
-            <div class="opts-grid">
-              <button class="opt-btn" onclick="setSpeed(60,this)">Mínimo<span class="opt-sub">60 segundos</span></button>
-              <button class="opt-btn active" onclick="setSpeed(90,this)">Normal<span class="opt-sub">90 segundos</span></button>
-              <button class="opt-btn" onclick="setSpeed(120,this)">Longo<span class="opt-sub">120 segundos</span></button>
+            <div class="drum-row">
+              <div class="drum-block">
+                <div class="drum-label">MÍN</div>
+                <div class="drum-wrap" id="drum-min" data-val="1" data-target="min">
+                  <div class="drum-track" id="drum-track-min"></div>
+                  <div class="drum-overlay-top"></div>
+                  <div class="drum-overlay-bot"></div>
+                  <div class="drum-selector"></div>
+                </div>
+              </div>
+              <div class="drum-sep">—</div>
+              <div class="drum-block">
+                <div class="drum-label">MÁX</div>
+                <div class="drum-wrap" id="drum-max" data-val="3" data-target="max">
+                  <div class="drum-track" id="drum-track-max"></div>
+                  <div class="drum-overlay-top"></div>
+                  <div class="drum-overlay-bot"></div>
+                  <div class="drum-selector"></div>
+                </div>
+              </div>
             </div>
             <div class="task-section-title">Modo de envio</div>
             <div class="opts-grid-2">
@@ -1987,18 +2043,64 @@ function togglePw(){
   i.type=pwVisible?'text':'password';
   document.getElementById('pw-toggle').textContent=pwVisible?'🙈':'👁';
 }
-function setSpeed(s,b){
-  state.waitSec=s;
-  document.querySelectorAll('.opts-grid .opt-btn').forEach(x=>x.classList.remove('active'));
-  if(b)b.classList.add('active');
+// ── DRUM PICKER ──────────────────────────────────────────────────────────────
+function initDrum(wrapperId,trackId,initVal,min,max){
+  const wrap=document.getElementById(wrapperId);
+  const track=document.getElementById(trackId);
+  const items=[];
+  for(let i=min;i<=max;i++)items.push(i);
+  // build items (3 padding top + items + 3 padding bot)
+  const pad=1;
+  track.innerHTML='';
+  for(let i=0;i<pad;i++){const d=document.createElement('div');d.className='drum-item';d.textContent='';track.appendChild(d);}
+  items.forEach(v=>{const d=document.createElement('div');d.className='drum-item';d.dataset.v=v;d.textContent=String(v).padStart(2,'0');track.appendChild(d);});
+  for(let i=0;i<pad;i++){const d=document.createElement('div');d.className='drum-item';d.textContent='';track.appendChild(d);}
+  let curIdx=items.indexOf(initVal);
+  if(curIdx<0)curIdx=0;
+  function setIdx(idx,animate){
+    curIdx=Math.max(0,Math.min(items.length-1,idx));
+    if(!animate)track.style.transition='none';
+    else track.style.transition='transform 0.18s cubic-bezier(.25,.8,.25,1)';
+    const offset=-(curIdx*50);
+    track.style.transform='translateY('+offset+'px)';
+    track.querySelectorAll('.drum-item').forEach((d,i)=>{
+      const rel=i-pad;
+      d.classList.toggle('active',rel===curIdx);
+      d.classList.toggle('near',Math.abs(rel-curIdx)===1);
+    });
+    wrap.dataset.val=items[curIdx];
+    updateTimeRange();
+  }
+  setIdx(curIdx,false);
+  setTimeout(()=>track.style.transition='',10);
+  // drag / wheel
+  let startY=0,startIdx=0,dragging=false;
+  wrap.addEventListener('mousedown',e=>{dragging=true;startY=e.clientY;startIdx=curIdx;e.preventDefault();});
+  window.addEventListener('mousemove',e=>{
+    if(!dragging)return;
+    const delta=Math.round((startY-e.clientY)/50);
+    setIdx(startIdx+delta,false);
+  });
+  window.addEventListener('mouseup',()=>{dragging=false;});
+  wrap.addEventListener('touchstart',e=>{dragging=true;startY=e.touches[0].clientY;startIdx=curIdx;},{passive:true});
+  wrap.addEventListener('touchmove',e=>{
+    if(!dragging)return;
+    const delta=Math.round((startY-e.touches[0].clientY)/50);
+    setIdx(startIdx+delta,false);
+    e.preventDefault();
+  },{passive:false});
+  wrap.addEventListener('touchend',()=>{dragging=false;});
+  wrap.addEventListener('wheel',e=>{
+    e.preventDefault();
+    setIdx(curIdx+(e.deltaY>0?1:-1),true);
+  },{passive:false});
 }
 function updateTimeRange(){
-  const mn=parseInt(document.getElementById('time-min').value)||1;
-  const mx=parseInt(document.getElementById('time-max').value)||3;
+  const mn=parseInt(document.getElementById('drum-min').dataset.val)||1;
+  const mx=parseInt(document.getElementById('drum-max').dataset.val)||3;
   const mn2=Math.min(mn,mx);const mx2=Math.max(mn,mx);
-  // pick random seconds between min*60 and max*60
   state.waitMin=mn2*60;state.waitMax=mx2*60;
-  state.waitSec=mn2*60; // default to min, randomized per task in runTasks
+  state.waitSec=mn2*60;
 }
 function setMode(isDraft,b){
   state.draft=isDraft;
@@ -2059,6 +2161,12 @@ async function runTasks(){
   setStatus('online');
   showStep('step-done');
 }
+// init drums on load
+window.addEventListener('DOMContentLoaded',()=>{
+  initDrum('drum-min','drum-track-min',1,1,60);
+  initDrum('drum-max','drum-track-max',3,1,60);
+  updateTimeRange();
+});
 </script>
 </body>
 </html>"""
