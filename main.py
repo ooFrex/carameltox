@@ -298,23 +298,23 @@ HTML = """<!DOCTYPE html>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
-  --bg:#020008;
-  --bg2:#05000e;
-  --surface:#080015;
-  --surface2:#0c001d;
-  --border:#1a0635;
-  --border2:#2d0a5a;
-  --red:#ff0038;
-  --red2:#ff2255;
-  --red3:#ff4d77;
-  --red-dim:#cc0030;
-  --redglow:rgba(255,0,56,0.5);
-  --redglow2:rgba(255,0,56,0.18);
-  --redglow3:rgba(255,0,56,0.08);
-  --text:#ede8ff;
-  --text2:#b8acd8;
-  --muted:#4a3870;
-  --muted2:#2d2050;
+  --bg:#000d0f;
+  --bg2:#001215;
+  --surface:#001a1e;
+  --surface2:#002228;
+  --border:#003d47;
+  --border2:#005c6b;
+  --red:#00e5ff;
+  --red2:#33eeff;
+  --red3:#66f2ff;
+  --red-dim:#00b8cc;
+  --redglow:rgba(0,229,255,0.5);
+  --redglow2:rgba(0,229,255,0.18);
+  --redglow3:rgba(0,229,255,0.08);
+  --text:#e0feff;
+  --text2:#99dde5;
+  --muted:#2a7a87;
+  --muted2:#1a4f58;
   --accent:#7000ff;
   --accent2:#9a33ff;
   --accentglow:rgba(112,0,255,0.3);
