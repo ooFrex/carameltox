@@ -1913,48 +1913,107 @@ function updateStudentUI(){
 // ══════════════════════════════════════════
 async function fetchTasks(){
   try{
-    const r=await fetch('/api/tasks',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({token:state.token,captcha:state.captcha,cf:state.cf||null})
+    const r = await fetch('/api/tasks', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        token: state.token,
+        captcha: state.captcha,
+        cf: state.cf || null
+      })
     });
-    const d=await r.json();
+
+    const d = await r.json();
+
     if(!r.ok){
-      notify('Erro tarefas: '+(d.detail||r.status),'err');
-      const btnF=document.getElementById('btn-fetch');
-      if(btnF){btnF.disabled=false;btnF.textContent='BUSCAR ATIVIDADES →';}
+      notify('Erro tarefas: ' + (d.detail || r.status), 'err');
+
+      const btnF = document.getElementById('btn-fetch');
+      if(btnF){
+        btnF.disabled = false;
+        btnF.textContent = 'BUSCAR ATIVIDADES →';
+      }
+
       return;
     }
-    state.captcha=d.captcha||state.captcha;
-    state.tasks=[...d.pending,...d.expired];
 
-    renderTasks(d.pending,'list-pending');
-    renderTasks(d.expired,'list-expired');
+    const pending = Array.isArray(d.pending) ? d.pending : [];
+    const expired = Array.isArray(d.expired) ? d.expired : [];
 
-    const wb=document.getElementById('welcome-banner');
-    wb.style.display='block';
-    wb.textContent='// '+state.nome.toUpperCase()+' — '+state.tasks.length+' ATIVIDADE(S) ENCONTRADA(S)';
+    state.captcha = d.captcha || state.captcha;
+    state.tasks = [...pending, ...expired];
 
-    document.getElementById('task-section-pending').style.display=d.pending.length?'block':'none';
-    document.getElementById('task-section-expired').style.display=d.expired.length?'block':'none';
+    renderTasks(pending, 'list-pending');
+    renderTasks(expired, 'list-expired');
 
-    const badge=document.getElementById('badge-tasks');
-    badge.textContent=state.tasks.length||'0';
+    const wb = document.getElementById('welcome-banner');
+    if(wb){
+      wb.style.display = 'block';
+      wb.textContent = '// ' + (state.nome || 'ALUNO').toUpperCase() + ' — ' + state.tasks.length + ' ATIVIDADE(S) ENCONTRADA(S)';
+    }
 
-    // Update dashboard stats
-    document.getElementById('dash-stat-pending').textContent=d.pending.length;
-    const p2=document.getElementById('dash-stat-pending2');if(p2)p2.textContent=d.pending.length;
-    document.getElementById('dash-stat-done').textContent=d.expired.length;
+    const pendingSection = document.getElementById('task-section-pending');
+    if(pendingSection){
+      pendingSection.style.display = pending.length ? 'block' : 'none';
+    }
 
-    const btnF=document.getElementById('btn-fetch');
-    if(btnF){btnF.disabled=false;btnF.textContent='BUSCAR ATIVIDADES →';}
-    const btnL=document.getElementById('btn-login');
-    if(btnL){btnL.disabled=false;btnL.textContent='ENTRAR NO SISTEMA →';}
+    const expiredSection = document.getElementById('task-section-expired');
+    if(expiredSection){
+      expiredSection.style.display = expired.length ? 'block' : 'none';
+    }
 
-    // Navigate to tasks page
-    navTo('tasks',document.querySelectorAll('.nav-item')[1]);
+    const badge = document.getElementById('badge-tasks');
+    if(badge){
+      badge.textContent = state.tasks.length || '0';
+    }
+
+    const dashPending = document.getElementById('dash-stat-pending');
+    if(dashPending){
+      dashPending.textContent = pending.length;
+    }
+
+    const dashPending2 = document.getElementById('dash-stat-pending2');
+    if(dashPending2){
+      dashPending2.textContent = pending.length;
+    }
+
+    const dashDone = document.getElementById('dash-stat-done');
+    if(dashDone){
+      dashDone.textContent = expired.length;
+    }
+
+    const btnF = document.getElementById('btn-fetch');
+    if(btnF){
+      btnF.disabled = false;
+      btnF.textContent = 'BUSCAR ATIVIDADES →';
+    }
+
+    const btnL = document.getElementById('btn-login');
+    if(btnL){
+      btnL.disabled = false;
+      btnL.textContent = 'ENTRAR NO SISTEMA →';
+    }
+
+    navTo('tasks', document.querySelectorAll('.nav-item')[1]);
     showStep('step-tasks');
+
+    notify('Atividades carregadas ✅', 'ok');
+
   }catch(e){
-    notify('Erro: '+e.message,'err');
+    console.error('fetchTasks error:', e);
+    notify('Erro ao buscar atividades: ' + e.message, 'err');
+
+    const btnF = document.getElementById('btn-fetch');
+    if(btnF){
+      btnF.disabled = false;
+      btnF.textContent = 'BUSCAR ATIVIDADES →';
+    }
+
+    const btnL = document.getElementById('btn-login');
+    if(btnL){
+      btnL.disabled = false;
+      btnL.textContent = 'ENTRAR NO SISTEMA →';
+    }
   }
 }
 
