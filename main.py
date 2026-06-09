@@ -128,7 +128,7 @@ def do_login(ra, senha, cf=None):
     raise Exception('Falha ao trocar token após 5 tentativas')
 
 def do_get_tasks(token, captcha, cf=None):
-    cookies = 
+    cookies = {'cf_clearance': cf} if cf else {}
     s, d = req(f'{BASE}/p/https://edusp-api.ip.tv/room/user',
         headers=headers_auth(token, captcha), cookies=cookies)
     targets = []
@@ -160,7 +160,7 @@ def do_get_tasks(token, captcha, cf=None):
             'captcha': captcha}
 
 def do_complete_task(token, captcha, task_id, publication_target, wait_sec, cf=None, draft=False):
-    cookies = 
+    cookies = {'cf_clearance': cf} if cf else {}
     cap = solve_captcha(cookies)
     s, lesson = req(
         f'{BASE}/p/https://edusp-api.ip.tv/tms/task/{task_id}/apply/?preview_mode=false&room_code={publication_target}',
