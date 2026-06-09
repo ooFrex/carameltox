@@ -1778,19 +1778,47 @@ const pageNames={
   home:'HOME',tasks:'TAREFA SP',
   redacao:'REDAÇÃO PAULISTA',provas:'PROVAS',plataformas:'PLATAFORMAS'
 };
-function navTo(page,el){
-  if(page===currentPage)return;
-  const old=document.getElementById('page-'+currentPage);
-  const next=document.getElementById('page-'+page);
-  old.classList.add('exit');
-  setTimeout(()=>{
-    old.classList.remove('active','exit');
+function navTo(page, el, force=false){
+  const old = document.getElementById('page-' + currentPage);
+  const next = document.getElementById('page-' + page);
+
+  if(!next){
+    console.error('Página não encontrada:', page);
+    return;
+  }
+
+  if(page === currentPage && !force){
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    if(el) el.classList.add('active');
+    const top = document.getElementById('topbar-page');
+    if(top) top.textContent = pageNames[page] || page.toUpperCase();
+    return;
+  }
+
+  if(old && old !== next){
+    old.classList.add('exit');
+    setTimeout(() => {
+      old.classList.remove('active', 'exit');
+      old.style.display = 'none';
+      old.style.opacity = '0';
+      old.style.visibility = 'hidden';
+    }, 300);
+  }
+
+  setTimeout(() => {
+    next.style.display = 'block';
+    next.style.opacity = '1';
+    next.style.visibility = 'visible';
     next.classList.add('active');
-  },300);
-  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
-  if(el)el.classList.add('active');
-  document.getElementById('topbar-page').textContent=pageNames[page]||page.toUpperCase();
-  currentPage=page;
+  }, old && old !== next ? 300 : 0);
+
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if(el) el.classList.add('active');
+
+  const top = document.getElementById('topbar-page');
+  if(top) top.textContent = pageNames[page] || page.toUpperCase();
+
+  currentPage = page;
 }
 
 // ══════════════════════════════════════════
@@ -1828,84 +1856,133 @@ function toggleLoginPw(){
 }
 
 async function doLogin(){
-  // Read from login screen OR task step inputs
-  const raEl=document.getElementById('login-ra')||document.getElementById('ra');
-  const senhaEl=document.getElementById('login-senha')||document.getElementById('senha');
-  const cfEl=document.getElementById('login-cf')||document.getElementById('cf');
+  const ra = ((document.getElementById('login-ra') || {value:''}).value.trim())
+          || ((document.getElementById('ra') || {value:''}).value.trim());
 
-  // Try login screen first
-  let ra=(document.getElementById('login-ra')||{value:''}).value.trim()
-      || (document.getElementById('ra')||{value:''}).value.trim();
-  let senha=(document.getElementById('login-senha')||{value:''}).value.trim()
-      || (document.getElementById('senha')||{value:''}).value.trim();
-  let cf=(document.getElementById('login-cf')||{value:''}).value.trim()
-      || (document.getElementById('cf')||{value:''}).value.trim();
+  const senha = ((document.getElementById('login-senha') || {value:''}).value.trim())
+             || ((document.getElementById('senha') || {value:''}).value.trim());
 
-  if(!ra||!senha){notify('Preencha RA e senha!','err');return;}
+  const cf = ((document.getElementById('login-cf') || {value:''}).value.trim())
+          || ((document.getElementById('cf') || {value:''}).value.trim());
 
-  // If called from login screen, copy values to task step fields for re-use
-  if(document.getElementById('ra')) document.getElementById('ra').value=ra;
-  if(document.getElementById('senha')) document.getElementById('senha').value=senha;
-  if(document.getElementById('cf')) document.getElementById('cf').value=cf;
+  if(!ra || !senha){
+    notify('Preencha RA e senha!', 'err');
+    return;
+  }
 
-  const btnL=document.getElementById('btn-login');
-  const btnF=document.getElementById('btn-fetch');
-  if(btnL){btnL.disabled=true;btnL.textContent='AGUARDE...';}
-  if(btnF){btnF.disabled=true;btnF.textContent='AGUARDE...';}
+  if(document.getElementById('ra')) document.getElementById('ra').value = ra;
+  if(document.getElementById('senha')) document.getElementById('senha').value = senha;
+  if(document.getElementById('cf')) document.getElementById('cf').value = cf;
 
-  notify('Resolvendo captcha...','warn',8000);
+  const btnL = document.getElementById('btn-login');
+  const btnF = document.getElementById('btn-fetch');
+
+  if(btnL){
+    btnL.disabled = true;
+    btnL.textContent = 'AGUARDE...';
+  }
+
+  if(btnF){
+    btnF.disabled = true;
+    btnF.textContent = 'AGUARDE...';
+  }
+
+  notify('Resolvendo captcha...', 'warn', 8000);
+
   try{
-    const r=await fetch('/api/login',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ra,senha,cf:cf||null,turnstile_token:turnstileToken})
+    const r = await fetch('/api/login', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        ra,
+        senha,
+        cf: cf || null,
+        turnstile_token: turnstileToken
+      })
     });
-    const d=await r.json();
+
+    const d = await r.json();
+
     if(!r.ok){
-      notify('Erro: '+(d.detail||r.status),'err');
-      if(btnL){btnL.disabled=false;btnL.textContent='ENTRAR NO SISTEMA →';}
-      if(btnF){btnF.disabled=false;btnF.textContent='BUSCAR ATIVIDADES →';}
+      notify('Erro: ' + (d.detail || r.status), 'err');
+      if(btnL){btnL.disabled = false; btnL.textContent = 'ENTRAR NO SISTEMA →';}
+      if(btnF){btnF.disabled = false; btnF.textContent = 'BUSCAR ATIVIDADES →';}
       return;
     }
-    state.token=d.token;state.captcha=d.captcha;
-    state.nome=d.nome||'Estudante';state.ra=ra;
-    state.escola=d.escola||'EE Sala do Futuro';state.cf=cf;
 
-    // Update UI with student info
+    state.token = d.token;
+    state.captcha = d.captcha;
+    state.nome = d.nome || 'Estudante';
+    state.ra = ra;
+    state.escola = d.escola || 'EE Sala do Futuro';
+    state.cf = cf;
+
     updateStudentUI();
 
-    // Transition login → app
     if(!state.loggedIn){
-      state.loggedIn=true;
-      const ls=document.getElementById('login-screen');
-      ls.classList.add('out');
-      setTimeout(()=>ls.style.display='none',700);
-      document.getElementById('app').classList.add('visible');
+      state.loggedIn = true;
+
+      const ls = document.getElementById('login-screen');
+      const app = document.getElementById('app');
+
+      if(ls){
+        ls.classList.add('out');
+        setTimeout(() => {
+          ls.style.display = 'none';
+        }, 700);
+      }
+
+      if(app){
+        app.classList.add('visible');
+        app.style.display = 'block';
+        app.style.opacity = '1';
+        app.style.visibility = 'visible';
+      }
+
+      // Espera a animação do login sair antes de navegar/renderizar as tarefas.
+      await new Promise(resolve => setTimeout(resolve, 800));
     }
 
-    notify('Logado Com Sucesso ✅','ok');
-    notify('Buscando atividades...','warn',5000);
+    notify('Logado com sucesso ✅', 'ok');
+    notify('Buscando atividades...', 'warn', 5000);
+
     await fetchTasks();
+
   }catch(e){
-    notify('Erro: '+e.message,'err');
-    if(btnL){btnL.disabled=false;btnL.textContent='ENTRAR NO SISTEMA →';}
-    if(btnF){btnF.disabled=false;btnF.textContent='BUSCAR ATIVIDADES →';}
+    console.error('doLogin error:', e);
+    notify('Erro: ' + e.message, 'err');
+    if(btnL){btnL.disabled = false; btnL.textContent = 'ENTRAR NO SISTEMA →';}
+    if(btnF){btnF.disabled = false; btnF.textContent = 'BUSCAR ATIVIDADES →';}
   }
 }
 
 function updateStudentUI(){
-  const n=state.nome;
-  const initials=n.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase()||'?';
-  document.getElementById('dash-avatar').textContent=initials;
-  document.getElementById('dash-nome').textContent=n;
-  document.getElementById('dash-ra').textContent=state.ra;
-  document.getElementById('dash-escola').textContent=state.escola;
+  const n = state.nome || 'Estudante';
+  const initials = n.split(' ').slice(0,2).map(w => w[0]).join('').toUpperCase() || '?';
 
-  const chip=document.getElementById('student-chip');
-  chip.classList.add('show');
-  document.getElementById('chip-nome').textContent=n;
-  document.getElementById('chip-ra').textContent='RA: '+state.ra;
-  document.getElementById('chip-escola').textContent=state.escola;
+  const dashAvatar = document.getElementById('dash-avatar');
+  if(dashAvatar) dashAvatar.textContent = initials;
+
+  const dashNome = document.getElementById('dash-nome');
+  if(dashNome) dashNome.textContent = n;
+
+  const dashRa = document.getElementById('dash-ra');
+  if(dashRa) dashRa.textContent = state.ra || '-';
+
+  const dashEscola = document.getElementById('dash-escola');
+  if(dashEscola) dashEscola.textContent = state.escola || '-';
+
+  const chip = document.getElementById('student-chip');
+  if(chip) chip.classList.add('show');
+
+  const chipNome = document.getElementById('chip-nome');
+  if(chipNome) chipNome.textContent = n;
+
+  const chipRa = document.getElementById('chip-ra');
+  if(chipRa) chipRa.textContent = 'RA: ' + (state.ra || '-');
+
+  const chipEscola = document.getElementById('chip-escola');
+  if(chipEscola) chipEscola.textContent = state.escola || '-';
 }
 
 // ══════════════════════════════════════════
@@ -1927,13 +2004,7 @@ async function fetchTasks(){
 
     if(!r.ok){
       notify('Erro tarefas: ' + (d.detail || r.status), 'err');
-
-      const btnF = document.getElementById('btn-fetch');
-      if(btnF){
-        btnF.disabled = false;
-        btnF.textContent = 'BUSCAR ATIVIDADES →';
-      }
-
+      resetLoginButtons();
       return;
     }
 
@@ -1942,6 +2013,7 @@ async function fetchTasks(){
 
     state.captcha = d.captcha || state.captcha;
     state.tasks = [...pending, ...expired];
+    state.selected.clear();
 
     renderTasks(pending, 'list-pending');
     renderTasks(expired, 'list-expired');
@@ -1953,86 +2025,106 @@ async function fetchTasks(){
     }
 
     const pendingSection = document.getElementById('task-section-pending');
-    if(pendingSection){
-      pendingSection.style.display = pending.length ? 'block' : 'none';
-    }
+    if(pendingSection) pendingSection.style.display = pending.length ? 'block' : 'none';
 
     const expiredSection = document.getElementById('task-section-expired');
-    if(expiredSection){
-      expiredSection.style.display = expired.length ? 'block' : 'none';
-    }
+    if(expiredSection) expiredSection.style.display = expired.length ? 'block' : 'none';
 
     const badge = document.getElementById('badge-tasks');
-    if(badge){
-      badge.textContent = state.tasks.length || '0';
-    }
+    if(badge) badge.textContent = state.tasks.length || '0';
 
     const dashPending = document.getElementById('dash-stat-pending');
-    if(dashPending){
-      dashPending.textContent = pending.length;
-    }
+    if(dashPending) dashPending.textContent = pending.length;
 
     const dashPending2 = document.getElementById('dash-stat-pending2');
-    if(dashPending2){
-      dashPending2.textContent = pending.length;
-    }
+    if(dashPending2) dashPending2.textContent = pending.length;
 
     const dashDone = document.getElementById('dash-stat-done');
-    if(dashDone){
-      dashDone.textContent = expired.length;
-    }
+    if(dashDone) dashDone.textContent = expired.length;
 
-    const btnF = document.getElementById('btn-fetch');
-    if(btnF){
-      btnF.disabled = false;
-      btnF.textContent = 'BUSCAR ATIVIDADES →';
-    }
-
-    const btnL = document.getElementById('btn-login');
-    if(btnL){
-      btnL.disabled = false;
-      btnL.textContent = 'ENTRAR NO SISTEMA →';
-    }
-
-    navTo('tasks', document.querySelectorAll('.nav-item')[1]);
-    showStep('step-tasks');
+    resetLoginButtons();
 
     notify('Atividades carregadas ✅', 'ok');
+
+    // Combina a ideia do Claude com a correção segura:
+    // 1) espera a tela de login terminar de sair;
+    // 2) muda para a página tasks;
+    // 3) depois ativa o step de tarefas.
+    setTimeout(() => {
+      const navItems = document.querySelectorAll('.nav-item');
+      navTo('tasks', navItems[1] || null, true);
+
+      setTimeout(() => {
+        showStep('step-tasks');
+        revealAppAndTasks();
+      }, 350);
+    }, 150);
 
   }catch(e){
     console.error('fetchTasks error:', e);
     notify('Erro ao buscar atividades: ' + e.message, 'err');
-
-    const btnF = document.getElementById('btn-fetch');
-    if(btnF){
-      btnF.disabled = false;
-      btnF.textContent = 'BUSCAR ATIVIDADES →';
-    }
-
-    const btnL = document.getElementById('btn-login');
-    if(btnL){
-      btnL.disabled = false;
-      btnL.textContent = 'ENTRAR NO SISTEMA →';
-    }
+    resetLoginButtons();
   }
 }
 
-function renderTasks(tasks,listId){
-  const ul=document.getElementById(listId);
-  ul.innerHTML='';
-  if(!tasks.length){
-    ul.innerHTML='<li style="color:var(--muted);font-size:12px;text-align:center;padding:20px;letter-spacing:1px">// nenhuma atividade nesta categoria</li>';
+function renderTasks(tasks, listId){
+  const ul = document.getElementById(listId);
+
+  if(!ul){
+    console.error('Lista não encontrada:', listId);
     return;
   }
-  tasks.forEach(t=>{
-    const li=document.createElement('li');
-    li.className='task-item';li.dataset.id=t.id;
-    li.innerHTML=`<div class="task-check"></div><div class="task-name">${t.title}</div><span class="task-badge ${t.tipo==='pendente'?'badge-p':'badge-e'}">${t.tipo}</span><div class="task-date">${t.expire_at}</div>`;
-    li.addEventListener('click',()=>{
-      const id=String(t.id);
-      if(state.selected.has(id)){state.selected.delete(id);li.classList.remove('selected');}
-      else{state.selected.add(id);li.classList.add('selected');}
+
+  ul.innerHTML = '';
+
+  if(!Array.isArray(tasks) || !tasks.length){
+    const empty = document.createElement('li');
+    empty.style.color = 'var(--muted)';
+    empty.style.fontSize = '12px';
+    empty.style.textAlign = 'center';
+    empty.style.padding = '20px';
+    empty.style.letterSpacing = '1px';
+    empty.textContent = '// nenhuma atividade nesta categoria';
+    ul.appendChild(empty);
+    return;
+  }
+
+  tasks.forEach(t => {
+    const li = document.createElement('li');
+    li.className = 'task-item';
+    li.dataset.id = t.id;
+
+    const check = document.createElement('div');
+    check.className = 'task-check';
+
+    const name = document.createElement('div');
+    name.className = 'task-name';
+    name.textContent = t.title || ('#' + t.id);
+
+    const badge = document.createElement('span');
+    badge.className = 'task-badge ' + (t.tipo === 'pendente' ? 'badge-p' : 'badge-e');
+    badge.textContent = t.tipo || '-';
+
+    const date = document.createElement('div');
+    date.className = 'task-date';
+    date.textContent = t.expire_at || '-';
+
+    li.appendChild(check);
+    li.appendChild(name);
+    li.appendChild(badge);
+    li.appendChild(date);
+
+    li.addEventListener('click', () => {
+      const id = String(t.id);
+      if(state.selected.has(id)){
+        state.selected.delete(id);
+        li.classList.remove('selected');
+      }else{
+        state.selected.add(id);
+        li.classList.add('selected');
+      }
     });
+
     ul.appendChild(li);
   });
 }
@@ -2080,8 +2172,64 @@ function setMode(isDraft,b){
 //  STEP MANAGEMENT
 // ══════════════════════════════════════════
 function showStep(id){
-  document.querySelectorAll('.step').forEach(s=>s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
+  const target = document.getElementById(id);
+
+  if(!target){
+    console.error('Step não encontrado:', id);
+    return;
+  }
+
+  document.querySelectorAll('.step').forEach(s => {
+    s.classList.remove('active');
+    s.style.display = 'none';
+    s.style.opacity = '0';
+    s.style.visibility = 'hidden';
+  });
+
+  target.classList.add('active');
+  target.style.display = 'block';
+  target.style.opacity = '1';
+  target.style.visibility = 'visible';
+}
+
+function revealAppAndTasks(){
+  const app = document.getElementById('app');
+  if(app){
+    app.classList.add('visible');
+    app.style.display = 'block';
+    app.style.opacity = '1';
+    app.style.visibility = 'visible';
+  }
+
+  const pageTasks = document.getElementById('page-tasks');
+  if(pageTasks){
+    pageTasks.classList.add('active');
+    pageTasks.style.display = 'block';
+    pageTasks.style.opacity = '1';
+    pageTasks.style.visibility = 'visible';
+  }
+
+  const stepTasks = document.getElementById('step-tasks');
+  if(stepTasks){
+    stepTasks.classList.add('active');
+    stepTasks.style.display = 'block';
+    stepTasks.style.opacity = '1';
+    stepTasks.style.visibility = 'visible';
+  }
+}
+
+function resetLoginButtons(){
+  const btnF = document.getElementById('btn-fetch');
+  if(btnF){
+    btnF.disabled = false;
+    btnF.textContent = 'BUSCAR ATIVIDADES →';
+  }
+
+  const btnL = document.getElementById('btn-login');
+  if(btnL){
+    btnL.disabled = false;
+    btnL.textContent = 'ENTRAR NO SISTEMA →';
+  }
 }
 
 // ══════════════════════════════════════════
