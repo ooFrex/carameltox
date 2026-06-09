@@ -212,23 +212,33 @@ class CompleteBody(BaseModel):
 
 # ─── ROTAS API ───────────────────────────────────────────────────────────────
 
-TURNSTILE_SECRET = "0x4AAAAAADf8FX1DAuHNy6M-3rohj2wvMvw"
+TURNSTILE_SECRET = "0x4AAAAAADhgE5rDE7MkSNEpTkILUhIXhgY"
 
 def verify_turnstile(token):
     if not token:
+        print("Turnstile: token vazio")
         return False
+
     try:
-        data = json.dumps({"secret": TURNSTILE_SECRET, "response": token}).encode()
+        data = json.dumps({
+            "secret": TURNSTILE_SECRET,
+            "response": token
+        }).encode()
+
         r = urllib.request.Request(
             "https://challenges.cloudflare.com/turnstile/v0/siteverify",
             data=data,
             headers={"Content-Type": "application/json"},
             method="POST"
         )
-        with urllib.request.urlopen(r, context=ctx, timeout=10) as res:
+
+        with urllib.request.urlopen(r, timeout=10) as res:
             result = json.loads(res.read())
+            print("TURNSTILE RESULT:", result)
             return result.get("success", False)
-    except:
+
+    except Exception as e:
+        print("TURNSTILE ERROR:", repr(e))
         return False
 
 @app.post('/api/login')
