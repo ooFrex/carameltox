@@ -1290,7 +1290,7 @@ body::after{
   <div class="cf-wordmark">NEP <strong>SOLUTIONS</strong></div>
   <div class="cf-status">By:richardzs</div>
   <div id="cf-turnstile-wrap" style="margin-top:10px">
-    <div class="cf-turnstile" data-sitekey="0x4AAAAAADf8FSTL21uTKbKu" data-callback="onTurnstileSuccess"></div>
+    <div class="cf-turnstile" data-sitekey="0x4AAAAAADhgE0wi-e9hPGDf" data-callback="onTurnstileSuccess"></div>
   </div>
 </div>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
