@@ -233,10 +233,12 @@ def verify_turnstile(token):
 
 @app.post('/api/login')
 def api_login(body: LoginBody):
-    if not body.cf or len(body.cf.strip()) < 50:
-        raise HTTPException(status_code=401, detail='RA ou senha inválidos')
     if not verify_turnstile(body.turnstile_token):
-        raise HTTPException(status_code=403, detail='Verificação Cloudflare falhou. Recarregue a página.')
+        raise HTTPException(
+            status_code=403,
+            detail='Verificação Cloudflare falhou. Recarregue a página.'
+        )
+
     try:
         return do_login(body.ra, body.senha, body.cf)
     except Exception as e:
