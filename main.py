@@ -1721,67 +1721,224 @@ body::after{
 //  PARTICLES
 // ══════════════════════════════════════════
 (function(){
-  const c=document.getElementById('particles');
-  const ctx=c.getContext('2d');
-  let W,H,pts=[];
-  function resize(){W=c.width=window.innerWidth;H=c.height=window.innerHeight}
-  resize();window.addEventListener('resize',resize);
-  for(let i=0;i<90;i++)pts.push({
-    x:Math.random()*2000,y:Math.random()*1080,
-    r:Math.random()*1.4+0.2,
-    vx:(Math.random()-.5)*0.025,vy:(Math.random()-.5)*0.022,
-    o:Math.random()*0.3+0.04,
-    col:Math.random()>0.5?[120,0,255]:Math.random()>0.5?[180,0,255]:[80,0,200]
-  });
+  const c = document.getElementById('particles');
+  if(!c) return;
+
+  const ctx = c.getContext('2d');
+  let W, H, pts = [];
+
+  function resize(){
+    W = c.width = window.innerWidth;
+    H = c.height = window.innerHeight;
+  }
+
+  resize();
+  window.addEventListener('resize', resize);
+
+  for(let i = 0; i < 90; i++){
+    pts.push({
+      x: Math.random() * 2000,
+      y: Math.random() * 1080,
+      r: Math.random() * 1.4 + 0.2,
+      vx: (Math.random() - .5) * 0.025,
+      vy: (Math.random() - .5) * 0.022,
+      o: Math.random() * 0.3 + 0.04,
+      col: Math.random() > 0.5 ? [120,0,255] : Math.random() > 0.5 ? [180,0,255] : [80,0,200]
+    });
+  }
+
   function draw(){
-    ctx.clearRect(0,0,W,H);
-    pts.forEach(p=>{
-      p.x+=p.vx;p.y+=p.vy;
-      if(p.x<0)p.x=W;if(p.x>W)p.x=0;
-      if(p.y<0)p.y=H;if(p.y>H)p.y=0;
-      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
-      ctx.fillStyle=`rgba(${p.col[0]},${p.col[1]},${p.col[2]},${p.o})`;
+    ctx.clearRect(0, 0, W, H);
+    pts.forEach(p => {
+      p.x += p.vx;
+      p.y += p.vy;
+
+      if(p.x < 0) p.x = W;
+      if(p.x > W) p.x = 0;
+      if(p.y < 0) p.y = H;
+      if(p.y > H) p.y = 0;
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${p.col[0]},${p.col[1]},${p.col[2]},${p.o})`;
       ctx.fill();
     });
+
     requestAnimationFrame(draw);
   }
+
   draw();
 })();
 
 // ══════════════════════════════════════════
 //  TURNSTILE
 // ══════════════════════════════════════════
-let turnstileToken=null;
+let turnstileToken = null;
+
 function onTurnstileSuccess(token){
-  turnstileToken=token;
-  const s=document.getElementById('cf-screen');
-  s.classList.add('hidden');
-  setTimeout(()=>s.style.display='none',900);
+  turnstileToken = token;
+
+  const s = document.getElementById('cf-screen');
+  if(s){
+    s.classList.add('hidden');
+    setTimeout(() => {
+      s.style.display = 'none';
+    }, 900);
+  }
 }
 
 // ══════════════════════════════════════════
 //  STATE
 // ══════════════════════════════════════════
-let state={
-  token:'',captcha:'',cf:'',
-  nome:'',ra:'',escola:'',
-  tasks:[],selected:new Set(),
-  waitSec:60,waitMin:60,waitMax:180,draft:false,
-  loggedIn:false,
+let state = {
+  token: '',
+  captcha: '',
+  cf: '',
+  nome: '',
+  ra: '',
+  escola: '',
+  tasks: [],
+  selected: new Set(),
+  waitSec: 60,
+  waitMin: 60,
+  waitMax: 180,
+  draft: false,
+  loggedIn: false
 };
+
+// ══════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════
+function $(id){
+  return document.getElementById(id);
+}
+
+function safeText(id, value){
+  const el = $(id);
+  if(el) el.textContent = value;
+}
+
+function resetLoginButtons(){
+  const btnF = $('btn-fetch');
+  if(btnF){
+    btnF.disabled = false;
+    btnF.textContent = 'BUSCAR ATIVIDADES →';
+  }
+
+  const btnL = $('btn-login');
+  if(btnL){
+    btnL.disabled = false;
+    btnL.textContent = 'ENTRAR NO SISTEMA →';
+  }
+}
+
+function setElVisible(el, displayValue = 'block'){
+  if(!el) return;
+  el.classList.remove('hidden', 'hide', 'fade-out', 'exiting', 'out');
+  el.classList.add('active', 'show', 'visible');
+  el.style.display = displayValue;
+  el.style.opacity = '1';
+  el.style.visibility = 'visible';
+  el.style.pointerEvents = 'auto';
+  el.style.transform = 'none';
+}
+
+function setElHidden(el){
+  if(!el) return;
+  el.classList.remove('active', 'show', 'visible');
+  el.classList.add('hidden');
+  el.style.display = 'none';
+  el.style.opacity = '0';
+  el.style.visibility = 'hidden';
+  el.style.pointerEvents = 'none';
+}
+
+function lockAppVisible(){
+  const login = $('login-screen');
+  const app = $('app');
+  const pageTasks = $('page-tasks');
+  const stepTasks = $('step-tasks');
+
+  if(login){
+    login.classList.remove('active', 'show', 'visible');
+    login.classList.add('out');
+    login.style.display = 'none';
+    login.style.opacity = '0';
+    login.style.visibility = 'hidden';
+    login.style.pointerEvents = 'none';
+    login.style.zIndex = '-1';
+  }
+
+  if(app){
+    app.classList.remove('hidden', 'hide', 'fade-out', 'exiting', 'out');
+    app.classList.add('visible', 'active', 'show');
+    app.style.display = 'flex';
+    app.style.opacity = '1';
+    app.style.visibility = 'visible';
+    app.style.pointerEvents = 'auto';
+    app.style.transform = 'none';
+  }
+
+  if(pageTasks){
+    document.querySelectorAll('.page').forEach(page => {
+      if(page !== pageTasks){
+        page.classList.remove('active', 'show', 'visible', 'exit');
+        page.style.display = 'none';
+        page.style.opacity = '0';
+        page.style.visibility = 'hidden';
+      }
+    });
+
+    pageTasks.classList.remove('hidden', 'hide', 'fade-out', 'exiting', 'out', 'exit');
+    pageTasks.classList.add('active', 'show', 'visible');
+    pageTasks.style.display = 'block';
+    pageTasks.style.opacity = '1';
+    pageTasks.style.visibility = 'visible';
+    pageTasks.style.pointerEvents = 'auto';
+    pageTasks.style.transform = 'none';
+  }
+
+  if(stepTasks){
+    document.querySelectorAll('.step').forEach(step => {
+      if(step !== stepTasks){
+        step.classList.remove('active', 'show', 'visible');
+        step.style.display = 'none';
+        step.style.opacity = '0';
+        step.style.visibility = 'hidden';
+      }
+    });
+
+    stepTasks.classList.remove('hidden', 'hide', 'fade-out', 'exiting', 'out');
+    stepTasks.classList.add('active', 'show', 'visible');
+    stepTasks.style.display = 'block';
+    stepTasks.style.opacity = '1';
+    stepTasks.style.visibility = 'visible';
+    stepTasks.style.pointerEvents = 'auto';
+    stepTasks.style.transform = 'none';
+  }
+
+  const navItems = document.querySelectorAll('.nav-item');
+  navItems.forEach(n => n.classList.remove('active'));
+  if(navItems[1]) navItems[1].classList.add('active');
+
+  safeText('topbar-page', 'TAREFA SP');
+  currentPage = 'tasks';
+}
 
 // ══════════════════════════════════════════
 //  NAV
 // ══════════════════════════════════════════
-let currentPage='home';
-const pageNames={
-  home:'HOME',tasks:'TAREFA SP',
-  redacao:'REDAÇÃO PAULISTA',provas:'PROVAS',plataformas:'PLATAFORMAS'
+let currentPage = 'home';
+const pageNames = {
+  home: 'HOME',
+  tasks: 'TAREFA SP',
+  redacao: 'REDAÇÃO PAULISTA',
+  provas: 'PROVAS',
+  plataformas: 'PLATAFORMAS'
 };
-function navTo(page, el, force=false){
-  const old = document.getElementById('page-' + currentPage);
-  const next = document.getElementById('page-' + page);
 
+function navTo(page, el, force = false){
+  const next = $('page-' + page);
   if(!next){
     console.error('Página não encontrada:', page);
     return;
@@ -1790,92 +1947,108 @@ function navTo(page, el, force=false){
   if(page === currentPage && !force){
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     if(el) el.classList.add('active');
-    const top = document.getElementById('topbar-page');
-    if(top) top.textContent = pageNames[page] || page.toUpperCase();
+    safeText('topbar-page', pageNames[page] || page.toUpperCase());
     return;
   }
 
-  if(old && old !== next){
-    old.classList.add('exit');
-    setTimeout(() => {
-      old.classList.remove('active', 'exit');
-      old.style.display = 'none';
-      old.style.opacity = '0';
-      old.style.visibility = 'hidden';
-    }, 300);
-  }
-
-  setTimeout(() => {
-    next.style.display = 'block';
-    next.style.opacity = '1';
-    next.style.visibility = 'visible';
-    next.classList.add('active');
-  }, old && old !== next ? 300 : 0);
+  document.querySelectorAll('.page').forEach(p => {
+    if(p === next){
+      p.classList.remove('exit', 'hidden', 'hide', 'fade-out', 'exiting', 'out');
+      p.classList.add('active', 'show', 'visible');
+      p.style.display = 'block';
+      p.style.opacity = '1';
+      p.style.visibility = 'visible';
+      p.style.pointerEvents = 'auto';
+      p.style.transform = 'none';
+    }else{
+      p.classList.remove('active', 'show', 'visible', 'exit');
+      p.style.display = 'none';
+      p.style.opacity = '0';
+      p.style.visibility = 'hidden';
+      p.style.pointerEvents = 'none';
+    }
+  });
 
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if(el) el.classList.add('active');
 
-  const top = document.getElementById('topbar-page');
-  if(top) top.textContent = pageNames[page] || page.toUpperCase();
-
+  safeText('topbar-page', pageNames[page] || page.toUpperCase());
   currentPage = page;
 }
 
 // ══════════════════════════════════════════
 //  NOTIFICATIONS
 // ══════════════════════════════════════════
-function notify(msg,type='ok',dur=4000){
-  const stack=document.getElementById('notif-stack');
-  const d=document.createElement('div');
-  d.className='notif notif-'+type;
-  d.textContent=msg;
+function notify(msg, type = 'ok', dur = 4000){
+  const stack = $('notif-stack');
+  if(!stack){
+    console.log(`[${type}]`, msg);
+    return;
+  }
+
+  const d = document.createElement('div');
+  d.className = 'notif notif-' + type;
+  d.textContent = msg;
   stack.appendChild(d);
-  setTimeout(()=>{d.style.transition='opacity .4s';d.style.opacity='0';setTimeout(()=>d.remove(),400)},dur);
+
+  setTimeout(() => {
+    d.style.transition = 'opacity .4s';
+    d.style.opacity = '0';
+    setTimeout(() => d.remove(), 400);
+  }, dur);
 }
 
 // ══════════════════════════════════════════
 //  STATUS PILL
 // ══════════════════════════════════════════
 function setStatus(s){
-  const pill=document.getElementById('status-pill');
-  const txt=document.getElementById('status-text');
-  pill.className='status-pill';
-  if(s==='running'){pill.classList.add('running');txt.textContent='EXECUTANDO'}
-  else if(s==='paused'){pill.classList.add('paused');txt.textContent='PAUSADO'}
-  else txt.textContent='ONLINE';
+  const pill = $('status-pill');
+  const txt = $('status-text');
+  if(!pill || !txt) return;
+
+  pill.className = 'status-pill';
+
+  if(s === 'running'){
+    pill.classList.add('running');
+    txt.textContent = 'EXECUTANDO';
+  }else if(s === 'paused'){
+    pill.classList.add('paused');
+    txt.textContent = 'PAUSADO';
+  }else{
+    txt.textContent = 'ONLINE';
+  }
 }
 
 // ══════════════════════════════════════════
 //  LOGIN SCREEN
 // ══════════════════════════════════════════
-let loginPwVisible=false;
+let loginPwVisible = false;
+
 function toggleLoginPw(){
-  loginPwVisible=!loginPwVisible;
-  document.getElementById('login-senha').type=loginPwVisible?'text':'password';
-  document.getElementById('login-pw-btn').textContent=loginPwVisible?'🙈':'👁';
+  loginPwVisible = !loginPwVisible;
+  const input = $('login-senha');
+  const btn = $('login-pw-btn');
+
+  if(input) input.type = loginPwVisible ? 'text' : 'password';
+  if(btn) btn.textContent = loginPwVisible ? '🙈' : '👁';
 }
 
 async function doLogin(){
-  const ra = ((document.getElementById('login-ra') || {value:''}).value.trim())
-          || ((document.getElementById('ra') || {value:''}).value.trim());
-
-  const senha = ((document.getElementById('login-senha') || {value:''}).value.trim())
-             || ((document.getElementById('senha') || {value:''}).value.trim());
-
-  const cf = ((document.getElementById('login-cf') || {value:''}).value.trim())
-          || ((document.getElementById('cf') || {value:''}).value.trim());
+  const ra = (($('login-ra') || {value:''}).value.trim()) || (($('ra') || {value:''}).value.trim());
+  const senha = (($('login-senha') || {value:''}).value.trim()) || (($('senha') || {value:''}).value.trim());
+  const cf = (($('login-cf') || {value:''}).value.trim()) || (($('cf') || {value:''}).value.trim());
 
   if(!ra || !senha){
     notify('Preencha RA e senha!', 'err');
     return;
   }
 
-  if(document.getElementById('ra')) document.getElementById('ra').value = ra;
-  if(document.getElementById('senha')) document.getElementById('senha').value = senha;
-  if(document.getElementById('cf')) document.getElementById('cf').value = cf;
+  if($('ra')) $('ra').value = ra;
+  if($('senha')) $('senha').value = senha;
+  if($('cf')) $('cf').value = cf;
 
-  const btnL = document.getElementById('btn-login');
-  const btnF = document.getElementById('btn-fetch');
+  const btnL = $('btn-login');
+  const btnF = $('btn-fetch');
 
   if(btnL){
     btnL.disabled = true;
@@ -1887,7 +2060,7 @@ async function doLogin(){
     btnF.textContent = 'AGUARDE...';
   }
 
-  notify('Resolvendo captcha...', 'warn', 8000);
+  notify('Entrando...', 'warn', 8000);
 
   try{
     const r = await fetch('/api/login', {
@@ -1905,54 +2078,55 @@ async function doLogin(){
 
     if(!r.ok){
       notify('Erro: ' + (d.detail || r.status), 'err');
-      if(btnL){btnL.disabled = false; btnL.textContent = 'ENTRAR NO SISTEMA →';}
-      if(btnF){btnF.disabled = false; btnF.textContent = 'BUSCAR ATIVIDADES →';}
+      resetLoginButtons();
       return;
     }
 
-    state.token = d.token;
-    state.captcha = d.captcha;
+    state.token = d.token || '';
+    state.captcha = d.captcha || '';
     state.nome = d.nome || 'Estudante';
     state.ra = ra;
     state.escola = d.escola || 'EE Sala do Futuro';
-    state.cf = cf;
+    state.cf = cf || '';
+    state.loggedIn = true;
 
     updateStudentUI();
 
-    if(!state.loggedIn){
-      state.loggedIn = true;
+    const login = $('login-screen');
+    const app = $('app');
 
-      const ls = document.getElementById('login-screen');
-      const app = document.getElementById('app');
+    if(login){
+      login.classList.add('out');
+      login.style.opacity = '0';
+      login.style.pointerEvents = 'none';
+    }
 
-      if(ls){
-        ls.classList.add('out');
-        setTimeout(() => {
-          ls.style.display = 'none';
-        }, 700);
-      }
-
-      if(app){
-        app.classList.add('visible');
-        app.style.display = 'block';
-        app.style.opacity = '1';
-        app.style.visibility = 'visible';
-      }
-
-      // Espera a animação do login sair antes de navegar/renderizar as tarefas.
-      await new Promise(resolve => setTimeout(resolve, 800));
+    if(app){
+      app.classList.add('visible', 'active', 'show');
+      app.style.display = 'flex';
+      app.style.opacity = '1';
+      app.style.visibility = 'visible';
+      app.style.pointerEvents = 'auto';
     }
 
     notify('Logado com sucesso ✅', 'ok');
     notify('Buscando atividades...', 'warn', 5000);
+
+    setTimeout(() => {
+      if(login){
+        login.style.display = 'none';
+        login.style.visibility = 'hidden';
+        login.style.zIndex = '-1';
+      }
+      lockAppVisible();
+    }, 700);
 
     await fetchTasks();
 
   }catch(e){
     console.error('doLogin error:', e);
     notify('Erro: ' + e.message, 'err');
-    if(btnL){btnL.disabled = false; btnL.textContent = 'ENTRAR NO SISTEMA →';}
-    if(btnF){btnF.disabled = false; btnF.textContent = 'BUSCAR ATIVIDADES →';}
+    resetLoginButtons();
   }
 }
 
@@ -1960,29 +2134,17 @@ function updateStudentUI(){
   const n = state.nome || 'Estudante';
   const initials = n.split(' ').slice(0,2).map(w => w[0]).join('').toUpperCase() || '?';
 
-  const dashAvatar = document.getElementById('dash-avatar');
-  if(dashAvatar) dashAvatar.textContent = initials;
+  safeText('dash-avatar', initials);
+  safeText('dash-nome', n);
+  safeText('dash-ra', state.ra || '-');
+  safeText('dash-escola', state.escola || '-');
 
-  const dashNome = document.getElementById('dash-nome');
-  if(dashNome) dashNome.textContent = n;
-
-  const dashRa = document.getElementById('dash-ra');
-  if(dashRa) dashRa.textContent = state.ra || '-';
-
-  const dashEscola = document.getElementById('dash-escola');
-  if(dashEscola) dashEscola.textContent = state.escola || '-';
-
-  const chip = document.getElementById('student-chip');
+  const chip = $('student-chip');
   if(chip) chip.classList.add('show');
 
-  const chipNome = document.getElementById('chip-nome');
-  if(chipNome) chipNome.textContent = n;
-
-  const chipRa = document.getElementById('chip-ra');
-  if(chipRa) chipRa.textContent = 'RA: ' + (state.ra || '-');
-
-  const chipEscola = document.getElementById('chip-escola');
-  if(chipEscola) chipEscola.textContent = state.escola || '-';
+  safeText('chip-nome', n);
+  safeText('chip-ra', 'RA: ' + (state.ra || '-'));
+  safeText('chip-escola', state.escola || '-');
 }
 
 // ══════════════════════════════════════════
@@ -1990,6 +2152,12 @@ function updateStudentUI(){
 // ══════════════════════════════════════════
 async function fetchTasks(){
   try{
+    if(!state.token || !state.captcha){
+      notify('Faça login antes de buscar atividades.', 'err');
+      resetLoginButtons();
+      return;
+    }
+
     const r = await fetch('/api/tasks', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
@@ -2018,47 +2186,36 @@ async function fetchTasks(){
     renderTasks(pending, 'list-pending');
     renderTasks(expired, 'list-expired');
 
-    const wb = document.getElementById('welcome-banner');
+    const wb = $('welcome-banner');
     if(wb){
       wb.style.display = 'block';
       wb.textContent = '// ' + (state.nome || 'ALUNO').toUpperCase() + ' — ' + state.tasks.length + ' ATIVIDADE(S) ENCONTRADA(S)';
     }
 
-    const pendingSection = document.getElementById('task-section-pending');
+    const pendingSection = $('task-section-pending');
     if(pendingSection) pendingSection.style.display = pending.length ? 'block' : 'none';
 
-    const expiredSection = document.getElementById('task-section-expired');
+    const expiredSection = $('task-section-expired');
     if(expiredSection) expiredSection.style.display = expired.length ? 'block' : 'none';
 
-    const badge = document.getElementById('badge-tasks');
-    if(badge) badge.textContent = state.tasks.length || '0';
-
-    const dashPending = document.getElementById('dash-stat-pending');
-    if(dashPending) dashPending.textContent = pending.length;
-
-    const dashPending2 = document.getElementById('dash-stat-pending2');
-    if(dashPending2) dashPending2.textContent = pending.length;
-
-    const dashDone = document.getElementById('dash-stat-done');
-    if(dashDone) dashDone.textContent = expired.length;
+    safeText('badge-tasks', String(state.tasks.length || 0));
+    safeText('dash-stat-pending', String(pending.length));
+    safeText('dash-stat-pending2', String(pending.length));
+    safeText('dash-stat-done', String(expired.length));
 
     resetLoginButtons();
-
     notify('Atividades carregadas ✅', 'ok');
 
-    // Combina a ideia do Claude com a correção segura:
-    // 1) espera a tela de login terminar de sair;
-    // 2) muda para a página tasks;
-    // 3) depois ativa o step de tarefas.
     setTimeout(() => {
+      lockAppVisible();
       const navItems = document.querySelectorAll('.nav-item');
       navTo('tasks', navItems[1] || null, true);
+      showStep('step-tasks');
 
-      setTimeout(() => {
-        showStep('step-tasks');
-        revealAppAndTasks();
-      }, 350);
-    }, 150);
+      setTimeout(lockAppVisible, 150);
+      setTimeout(lockAppVisible, 500);
+      setTimeout(lockAppVisible, 1200);
+    }, 250);
 
   }catch(e){
     console.error('fetchTasks error:', e);
@@ -2068,7 +2225,7 @@ async function fetchTasks(){
 }
 
 function renderTasks(tasks, listId){
-  const ul = document.getElementById(listId);
+  const ul = $(listId);
 
   if(!ul){
     console.error('Lista não encontrada:', listId);
@@ -2130,49 +2287,60 @@ function renderTasks(tasks, listId){
 }
 
 function selectAll(){
-  state.tasks.forEach(t=>{
+  state.tasks.forEach(t => {
     state.selected.add(String(t.id));
-    const li=document.querySelector('[data-id="'+t.id+'"]');
-    if(li)li.classList.add('selected');
+    const li = document.querySelector('[data-id="' + t.id + '"]');
+    if(li) li.classList.add('selected');
   });
 }
 
 // ══════════════════════════════════════════
 //  SETTINGS
 // ══════════════════════════════════════════
-let pwVisible=false;
+let pwVisible = false;
+
 function togglePw(){
-  pwVisible=!pwVisible;
-  const i=document.getElementById('senha');
-  i.type=pwVisible?'text':'password';
-  document.getElementById('pw-toggle').textContent=pwVisible?'🙈':'👁';
+  pwVisible = !pwVisible;
+  const i = $('senha');
+  const b = $('pw-toggle');
+  if(i) i.type = pwVisible ? 'text' : 'password';
+  if(b) b.textContent = pwVisible ? '🙈' : '👁';
 }
-function setSpeed(s,b){
-  state.waitSec=s;
-  document.querySelectorAll('.opts-grid .opt-btn').forEach(x=>x.classList.remove('active'));
-  if(b)b.classList.add('active');
+
+function setSpeed(s, b){
+  state.waitSec = s;
+  document.querySelectorAll('.opts-grid .opt-btn').forEach(x => x.classList.remove('active'));
+  if(b) b.classList.add('active');
 }
+
 function updateTimeRange(){
-  const mn=parseInt(document.getElementById('time-min').value)||1;
-  const mx=parseInt(document.getElementById('time-max').value)||3;
-  const mn2=Math.min(mn,mx);const mx2=Math.max(mn,mx);
-  // pick random seconds between min*60 and max*60
-  state.waitMin=mn2*60;state.waitMax=mx2*60;
-  state.waitSec=mn2*60; // default to min, randomized per task in runTasks
+  const mn = parseInt(($('time-min') || {value:1}).value) || 1;
+  const mx = parseInt(($('time-max') || {value:3}).value) || 3;
+  const mn2 = Math.min(mn, mx);
+  const mx2 = Math.max(mn, mx);
+  state.waitMin = mn2 * 60;
+  state.waitMax = mx2 * 60;
+  state.waitSec = mn2 * 60;
 }
-function setMode(isDraft,b){
-  state.draft=isDraft;
-  document.getElementById('mode-finalizar').classList.remove('active');
-  document.getElementById('mode-rascunho').classList.remove('active');
-  b.classList.add('active');
-  document.getElementById('btn-run').textContent=isDraft?'SALVAR COMO RASCUNHO →':'COMPLETAR SELECIONADAS →';
+
+function setMode(isDraft, b){
+  state.draft = isDraft;
+
+  const f = $('mode-finalizar');
+  const r = $('mode-rascunho');
+  if(f) f.classList.remove('active');
+  if(r) r.classList.remove('active');
+  if(b) b.classList.add('active');
+
+  const btn = $('btn-run');
+  if(btn) btn.textContent = isDraft ? 'SALVAR COMO RASCUNHO →' : 'COMPLETAR SELECIONADAS →';
 }
 
 // ══════════════════════════════════════════
 //  STEP MANAGEMENT
 // ══════════════════════════════════════════
 function showStep(id){
-  const target = document.getElementById(id);
+  const target = $(id);
 
   if(!target){
     console.error('Step não encontrado:', id);
@@ -2180,101 +2348,44 @@ function showStep(id){
   }
 
   document.querySelectorAll('.step').forEach(s => {
-    s.classList.remove('active');
-    s.style.display = 'none';
-    s.style.opacity = '0';
-    s.style.visibility = 'hidden';
+    if(s === target){
+      s.classList.add('active', 'show', 'visible');
+      s.style.display = 'block';
+      s.style.opacity = '1';
+      s.style.visibility = 'visible';
+      s.style.pointerEvents = 'auto';
+      s.style.transform = 'none';
+    }else{
+      s.classList.remove('active', 'show', 'visible');
+      s.style.display = 'none';
+      s.style.opacity = '0';
+      s.style.visibility = 'hidden';
+      s.style.pointerEvents = 'none';
+    }
   });
-
-  target.classList.add('active');
-  target.style.display = 'block';
-  target.style.opacity = '1';
-  target.style.visibility = 'visible';
-}
-
-function revealAppAndTasks(){
-  const app = document.getElementById('app');
-  if(app){
-    app.classList.add('visible');
-    app.style.display = 'block';
-    app.style.opacity = '1';
-    app.style.visibility = 'visible';
-  }
-
-  const pageTasks = document.getElementById('page-tasks');
-  if(pageTasks){
-    pageTasks.classList.add('active');
-    pageTasks.style.display = 'block';
-    pageTasks.style.opacity = '1';
-    pageTasks.style.visibility = 'visible';
-  }
-
-  const stepTasks = document.getElementById('step-tasks');
-  if(stepTasks){
-    stepTasks.classList.add('active');
-    stepTasks.style.display = 'block';
-    stepTasks.style.opacity = '1';
-    stepTasks.style.visibility = 'visible';
-  }
-}
-
-function resetLoginButtons(){
-  const btnF = document.getElementById('btn-fetch');
-  if(btnF){
-    btnF.disabled = false;
-    btnF.textContent = 'BUSCAR ATIVIDADES →';
-  }
-
-  const btnL = document.getElementById('btn-login');
-  if(btnL){
-    btnL.disabled = false;
-    btnL.textContent = 'ENTRAR NO SISTEMA →';
-  }
 }
 
 // ══════════════════════════════════════════
 //  LOG
 // ══════════════════════════════════════════
-function log(id,msg,cls=''){
-  const el=document.getElementById(id);
-  const d=document.createElement('div');
-  d.className=cls;d.textContent='> '+msg;
-  el.appendChild(d);el.scrollTop=el.scrollHeight;
+function log(id, msg, cls = ''){
+  const el = $(id);
+  if(!el) return;
+
+  const d = document.createElement('div');
+  d.className = cls;
+  d.textContent = '> ' + msg;
+  el.appendChild(d);
+  el.scrollTop = el.scrollHeight;
 }
 
 // ══════════════════════════════════════════
 //  RUN TASKS
 // ══════════════════════════════════════════
-async function runTasks(){
-  if(!state.selected.size){notify('Selecione pelo menos uma atividade!','err');return;}
-  const toRun=state.tasks.filter(t=>state.selected.has(String(t.id)));
-  document.getElementById('log-run').innerHTML='';
-  showStep('step-running');
-  setStatus('running');
-  let ok=0;
-  for(let i=0;i<toRun.length;i++){
-    const t=toRun[i];
-    document.getElementById('progress').style.width=Math.round(i/toRun.length*100)+'%';
-    document.getElementById('running-status').textContent='['+( i+1)+'/'+toRun.length+'] '+t.title;
-    log('log-run','Iniciando: '+t.title,'log-info');
-    try{
-      const r=await fetch('/api/complete_task',{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({token:state.token,captcha:state.captcha,task_id:t.id,
-          publication_target:t.publication_target||'',wait_sec:state.waitMin&&state.waitMax?Math.floor(Math.random()*(state.waitMax-state.waitMin+1))+state.waitMin:state.waitSec,
-          cf:state.cf||null,draft:state.draft})
-      });
-      const d=await r.json();
-      if(r.ok){ok++;log('log-run','✓ '+t.title+' ('+d.wait+'s)'+(d.draft?' [rascunho]':''),'log-ok');}
-      else{log('log-run','✗ '+t.title+': '+(d.detail||r.status),'log-err');}
-    }catch(e){log('log-run','✗ Erro: '+e.message,'log-err');}
-  }
-  document.getElementById('progress').style.width='100%';
-  document.getElementById('res-count').textContent=ok+'/'+toRun.length;
-  document.getElementById('log-done').innerHTML=document.getElementById('log-run').innerHTML;
-  setStatus('online');
-  showStep('step-done');
+function runTasks(){
+  notify('Não posso ajudar a automatizar a conclusão de atividades. Posso deixar a tela, login e listagem funcionando.', 'err', 6000);
 }
+
 </script>
 </body>
 </html>"""
