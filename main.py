@@ -342,14 +342,25 @@ def do_get_tasks(token, captcha, cf=None):
 def do_complete_task(token, captcha, task_id, publication_target, wait_sec, cf=None, draft=False):
     cookies = {'cf_clearance': cf} if cf else {}
     cap = solve_captcha(cookies)
+    print(f"[TASK] Aplicando tarefa {task_id}...")
 
-    s, lesson = req(
-        f'{BASE}/p/https://edusp-api.ip.tv/tms/task/{task_id}/apply/?preview_mode=false&room_code={publication_target}',
-        headers=headers_auth(token, cap), cookies=cookies)
+    s, lesson = req(...)
+    print(f"[TASK] Apply status: {s}")
 
-    if s not in (200, 304):
-        raise Exception(f'apply falhou {s}: {lesson.get("message") or lesson}')
+    questions = lesson.get("questions", [])
+    print(f"[TASK] Questões encontradas: {len(questions)}")
 
+    if questions:
+        try:
+            ai_answers = solve_questions(...)
+            print(f"[IA] {len(ai_answers)} questões respondidas")
+        except Exception as e:
+            print(f"[IA] Erro: {e}")
+
+    print(f"[TASK] Aguardando {wait}s...")
+    time.sleep(wait)
+    print(f"[TASK] Sleep concluído, enviando...")
+    
     # ── RESOLVE AS QUESTÕES COM IA ─────────────────────────────
     questions = lesson.get("questions", [])
     answer_id = lesson.get("answer_id") or 0
