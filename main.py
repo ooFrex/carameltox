@@ -243,11 +243,9 @@ def verify_turnstile(token):
 
 @app.post('/api/login')
 def api_login(body: LoginBody):
-    if not verify_turnstile(body.turnstile_token):
-        raise HTTPException(
-            status_code=403,
-            detail='Verificação Cloudflare falhou. Recarregue a página.'
-        )
+    if body.turnstile_token and not verify_turnstile(body.turnstile_token):
+        raise HTTPException(status_code=403, detail='Verificação Cloudflare falhou.')
+    # sem token = vem da extensão ✓
 
     try:
         return do_login(body.ra, body.senha, body.cf)
