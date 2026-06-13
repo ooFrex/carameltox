@@ -341,25 +341,73 @@ def do_get_tasks(token, captcha, cf=None):
 
 def do_complete_task(token, captcha, task_id, publication_target, wait_sec, cf=None, draft=False):
     cookies = {'cf_clearance': cf} if cf else {}
+    print(f"[TASK] Resolvendo captcha...")
     cap = solve_captcha(cookies)
     print(f"[TASK] Aplicando tarefa {task_id}...")
 
-    s, lesson = req(...)
-    print(f"[TASK] Apply status: {s}")
+    s, lesson = req(
+        f'{BASE}/p/https://edusp-api.ip.tv/tms/task/{task_id}/apply/?preview_mode=false&room_code={publication_target}',
+        headers=headers_auth(token, cap), cookies=cookies)
+    print(f"[TASK] Apply status: {s} | keys: {list(lesson.keys()) if isinstance(lesson, dict) else lesson}")
+
+    if s not in (200, 304):
+        raise Exception(f'apply falhou {s}: {lesson.get("message") or lesson}')
 
     questions = lesson.get("questions", [])
-    print(f"[TASK] Questões encontradas: {len(questions)}")
+    answer_id = lesson.get("answer_id") or 0
+    print(f"[TASK] Questões: {len(questions)} | answer_id: {answer_id}")
 
+    ai_answers = {}
     if questions:
         try:
-            ai_answers = solve_questions(...)
+            ai_answers = solve_questions(
+                questions,
+                lesson_title=lesson.get("title", ""),
+                lesson_description=lesson.get("description", "")
+            )
             print(f"[IA] {len(ai_answers)} questões respondidas")
         except Exception as e:
             print(f"[IA] Erro: {e}")
 
+    wait = max(lesson.get('min_execution_time') or 60, wait_sec)
     print(f"[TASK] Aguardando {wait}s...")
     time.sleep(wait)
-    print(f"[TASK] Sleep concluído, enviando...")
+    print(f"[TASK] Sleep ok, enviando...")
+
+    cap2 = solve_captcha(cookies)
+
+    if ai_answers and answer_id:
+        put_url = f'{BASE}/p/https://edusp-api.ip.tv/tms/task/{task_id}/answer/{answer_id}'
+        s_put, r_put = req(put_url, method='PUT',
+            data={
+                "status": "draft" if draft else "submitted",
+                "answers": ai_answers,
+                "accessed_on": "room",
+                "executed_on": publication_target,
+                "duration": wait
+            },
+            headers=headers_auth(token, cap2),
+            cookies=cookies)
+        print(f"[IA] PUT resposta: {s_put}")
+
+    s2, res = req(f'{BASE}/api/complete', method='POST',
+        data={
+            'x_auth_key': token, 'room_code': publication_target,
+            'lesson_id': task_id, 'draft': draft, 'lesson_info': lesson,
+            'time_spent': wait, 'answer_id': answer_id,
+            'target_score': 100, 'captchaToken': cap2,
+        },
+        headers={
+            'accept':'*/*','accept-language':'pt-BR,pt;q=0.7',
+            'content-type':'application/json',
+            'origin': BASE,'referer': BASE+'/','priority':'u=1, i',
+            'user-agent': UA,
+        },
+        cookies=cookies)
+
+    if s2 == 200:
+        return {'success': True, 'wait': wait, 'draft': draft, 'questions_answered': len(ai_answers)}
+    raise Exception(f'complete falhou {s2}: {res.get("message") or res.get("error") or res}')
     
     # ── RESOLVE AS QUESTÕES COM IA ─────────────────────────────
     questions = lesson.get("questions", [])
