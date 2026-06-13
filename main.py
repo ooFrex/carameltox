@@ -24,13 +24,15 @@ UA      = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, 
 
 # ─── GROQ IA ─────────────────────────────────────────────────────────────────
 
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "SUA_CHAVE_GROQ_AQUI")
-print(f"[GROQ] Chave carregada: {GROQ_API_KEY[:8]}...")  # mostra só os primeiros caracteres
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+print(f"[GROQ] Chave carregada: {'OK ' + GROQ_API_KEY[:8] + '...' if GROQ_API_KEY else 'NÃO ENCONTRADA'}")
 
-def ask_claude(prompt):
+def ask_groq(prompt):
+    if not GROQ_API_KEY:
+        raise Exception("GROQ_API_KEY não configurada")
     body = json.dumps({
         "model": "llama-3.3-70b-versatile",
-        "max_tokens": 1024,
+        "max_tokens": 2048,
         "messages": [{"role": "user", "content": prompt}]
     }).encode()
     r = urllib.request.Request(
@@ -50,7 +52,14 @@ def strip_html(html):
     return re.sub(r'<[^>]+>', '', html or '').strip()
 
 def solve_questions(questions, lesson_title="", lesson_description=""):
+    """Resolve todas as questões em um ÚNICO request Groq para evitar rate limit."""
     answers = {}
+    q_map = {}
+    prompt_parts = [
+        f"Você é um estudante brasileiro do ensino médio respondendo uma atividade.\n"
+        f"Contexto: {lesson_title}. {lesson_description}\n"
+        f"Responda TODAS as questões abaixo em um único bloco.\n"
+    ]
 
     for q in questions:
         qtype = q.get("type")
@@ -60,145 +69,145 @@ def solve_questions(questions, lesson_title="", lesson_description=""):
             continue
 
         statement = strip_html(q.get("statement", ""))
+        q_map[str(qid)] = q
 
-        # ── MÚLTIPLA ESCOLHA (single) ──────────────────────────
         if qtype == "single":
             opts = q.get("options", {})
             opts_text = "\n".join(
-                f"{k}) {strip_html(v['statement'])}"
-                for k, v in opts.items()
+                f"  {k}) {strip_html(v['statement'])}" for k, v in opts.items()
             )
-            prompt = f"""Você é um estudante brasileiro do ensino médio respondendo uma atividade.
-Contexto da tarefa: {lesson_title}. {lesson_description}
+            prompt_parts.append(
+                f"Q{qid}|single\n{statement}\n{opts_text}"
+            )
 
-Questão: {statement}
-
-Alternativas:
-{opts_text}
-
-Responda APENAS com o número da alternativa correta (0, 1, 2, 3 ou 4). Nada mais."""
-
-            choice = ask_claude(prompt).strip()
-            if choice not in [str(i) for i in range(len(opts))]:
-                choice = "0"
-
-            answer = {str(i): (str(i) == choice) for i in range(len(opts))}
-            answers[str(qid)] = {
-                "question_id": qid,
-                "question_type": "single",
-                "answer": answer
-            }
-
-        # ── VERDADEIRO/FALSO ───────────────────────────────────
         elif qtype == "true-false":
             opts = q.get("options", {})
             opts_text = "\n".join(
-                f"{k}) {strip_html(v['statement'])}"
-                for k, v in opts.items()
+                f"  {k}) {strip_html(v['statement'])}" for k, v in opts.items()
             )
-            prompt = f"""Você é um estudante brasileiro do ensino médio respondendo uma atividade.
-Contexto: {lesson_title}. {lesson_description}
+            prompt_parts.append(
+                f"Q{qid}|true-false\n{statement}\n{opts_text}"
+            )
 
-Questão: {statement}
-
-Afirmações (responda V para verdadeiro ou F para falso para cada uma):
-{opts_text}
-
-Responda APENAS com os valores separados por vírgula na ordem (ex: V,F,V,V,F). Nada mais."""
-
-            result = ask_claude(prompt).strip().upper()
-            vals = [v.strip() for v in result.split(",")]
-
-            answer = {}
-            for i, key in enumerate(opts.keys()):
-                v = vals[i] if i < len(vals) else "V"
-                answer[key] = (v == "V" or v == "TRUE" or v == "1")
-
-            answers[str(qid)] = {
-                "question_id": qid,
-                "question_type": "true-false",
-                "answer": answer
-            }
-
-        # ── ORDENAR PALAVRAS (cloud) ───────────────────────────
         elif qtype == "cloud":
             words = q.get("options", {}).get("words", [])
-            prompt = f"""Você é um estudante brasileiro do ensino médio respondendo uma atividade.
-Contexto: {lesson_title}.
+            prompt_parts.append(
+                f"Q{qid}|cloud\n{statement}\nPalavras disponíveis: {', '.join(words)}"
+            )
 
-Questão: {statement}
-
-Ordene essas palavras para formar uma frase correta:
-{', '.join(words)}
-
-Responda APENAS com as palavras na ordem correta, separadas por vírgula. Use exatamente as palavras fornecidas, sem alterar nada."""
-
-            result = ask_claude(prompt).strip()
-            ordered = [w.strip() for w in result.split(",")]
-
-            if set(ordered) != set(words):
-                ordered = words
-
-            answers[str(qid)] = {
-                "question_id": qid,
-                "question_type": "fill-words",
-                "answer": ordered
-            }
-
-        # ── FILL-WORDS ─────────────────────────────────────────
         elif qtype == "fill-words":
-            opts = q.get("options", {})
-            words = opts.get("words", [])
-            prompt = f"""Você é um estudante brasileiro do ensino médio respondendo uma atividade.
-Contexto: {lesson_title}.
+            words = q.get("options", {}).get("words", [])
+            prompt_parts.append(
+                f"Q{qid}|fill-words\n{statement}\nPalavras disponíveis: {', '.join(words)}"
+            )
 
-Questão: {statement}
-
-Complete as lacunas com as palavras corretas da lista:
-{', '.join(words)}
-
-Responda APENAS com as palavras nas lacunas em ordem, separadas por vírgula."""
-
-            result = ask_claude(prompt).strip()
-            ordered = [w.strip() for w in result.split(",")]
-
-            answers[str(qid)] = {
-                "question_id": qid,
-                "question_type": "fill-words",
-                "answer": ordered
-            }
-
-        # ── DISSERTATIVA (text_ai) ─────────────────────────────
         elif qtype == "text_ai":
-            opts = q.get("options", {})
+            opts     = q.get("options", {})
             keywords = opts.get("ai_grading_keywords", [])
             min_chars = opts.get("min_text_count", 100)
-            max_chars = opts.get("max_text_count", 2000)
+            max_chars = opts.get("max_text_count", 800)
+            prompt_parts.append(
+                f"Q{qid}|text_ai\n{statement}\n"
+                f"Keywords obrigatórias no texto: {', '.join(keywords)}\n"
+                f"Tamanho: entre {min_chars} e {min(max_chars, 800)} caracteres.\n"
+                f"Mencione Bob Esponja de alguma forma natural."
+            )
 
-            prompt = f"""Você é um estudante brasileiro do ensino médio escrevendo uma resposta dissertativa.
-Contexto da tarefa: {lesson_title}. {lesson_description}
+    if not q_map:
+        return answers
 
-Questão: {statement}
+    prompt = "\n\n".join(prompt_parts)
+    prompt += """
 
-Palavras-chave que devem aparecer na resposta: {', '.join(keywords)}
+---
+FORMATO DE RESPOSTA (siga exatamente, uma linha por questão):
 
-Escreva uma resposta dissertativa completa, em português, de forma natural como um estudante escreveria.
-A resposta deve ter entre {min_chars} e {min(max_chars, 800)} caracteres.
-Use as palavras-chave naturalmente no texto.
-NÃO use markdown, NÃO use fórmulas LaTeX, escreva texto simples.
-E POR ULTIMO E MAIS IMPORTANTE CITE O BOB ESPONJA DE ALGUMA FORMA """
+single    → Q<id>: <número da alternativa>        ex: Q123: 2
+true-false → Q<id>: V,F,V,F                       ex: Q124: V,F,V,V (na ordem das afirmações)
+cloud     → Q<id>: palavra1,palavra2,...           ex: Q125: o,gato,pulou
+fill-words → Q<id>: palavra1,palavra2,...          ex: Q126: sol,lua
+text_ai   → Q<id>: <texto corrido, sem quebras>   ex: Q127: Assim como Bob Esponja...
 
-            text = ask_claude(prompt).strip()
-            if len(text) < min_chars:
-                text += " " + ask_claude(f"Continue essa resposta: {text}")
+NÃO escreva nada além das respostas no formato acima.
+"""
 
-            answers[str(qid)] = {
-                "question_id": qid,
-                "question_type": "text_ai",
-                "answer": {"0": text}
-            }
+    try:
+        result = ask_groq(prompt)
+        print(f"[IA] Resposta bruta:\n{result[:500]}")
+    except Exception as e:
+        print(f"[IA] Erro no request Groq: {e}")
+        return {}
 
+    # ── Parse das respostas ──────────────────────────────────────
+    for line in result.strip().split('\n'):
+        line = line.strip()
+        if not line.startswith('Q'):
+            continue
+        try:
+            head, _, value = line.partition(': ')
+            qid = head[1:].strip()
+            value = value.strip()
+            q = q_map.get(qid)
+            if not q:
+                continue
+            qtype = q.get("type")
+
+            if qtype == "single":
+                opts = q.get("options", {})
+                choice = value.strip()
+                if choice not in [str(i) for i in range(len(opts))]:
+                    choice = "0"
+                answers[str(qid)] = {
+                    "question_id": int(qid),
+                    "question_type": "single",
+                    "answer": {str(i): (str(i) == choice) for i in range(len(opts))}
+                }
+
+            elif qtype == "true-false":
+                opts = q.get("options", {})
+                vals = [v.strip().upper() for v in value.split(',')]
+                answer = {}
+                for i, key in enumerate(opts.keys()):
+                    v = vals[i] if i < len(vals) else "V"
+                    answer[key] = (v in ("V", "TRUE", "1"))
+                answers[str(qid)] = {
+                    "question_id": int(qid),
+                    "question_type": "true-false",
+                    "answer": answer
+                }
+
+            elif qtype == "cloud":
+                words_orig = q.get("options", {}).get("words", [])
+                ordered = [w.strip() for w in value.split(',')]
+                if set(ordered) != set(words_orig):
+                    ordered = words_orig
+                answers[str(qid)] = {
+                    "question_id": int(qid),
+                    "question_type": "fill-words",
+                    "answer": ordered
+                }
+
+            elif qtype == "fill-words":
+                ordered = [w.strip() for w in value.split(',')]
+                answers[str(qid)] = {
+                    "question_id": int(qid),
+                    "question_type": "fill-words",
+                    "answer": ordered
+                }
+
+            elif qtype == "text_ai":
+                answers[str(qid)] = {
+                    "question_id": int(qid),
+                    "question_type": "text_ai",
+                    "answer": {"0": value}
+                }
+
+        except Exception as e:
+            print(f"[IA] Erro parse linha '{line}': {e}")
+
+    print(f"[IA] {len(answers)}/{len(q_map)} questões parseadas")
     return answers
+
 
 # ─── HTTP UTILS ──────────────────────────────────────────────────────────────
 
@@ -231,6 +240,7 @@ def headers_auth(token, captcha=None):
         h['x-captcha-token'] = captcha
     return h
 
+
 # ─── CAPTCHA ─────────────────────────────────────────────────────────────────
 
 def solve_captcha(cookies={}):
@@ -257,6 +267,7 @@ def solve_captcha(cookies={}):
     if not v.get('token'):
         raise Exception(f'captcha verify falhou: {v}')
     return v['token']
+
 
 # ─── LÓGICA ──────────────────────────────────────────────────────────────────
 
@@ -354,65 +365,16 @@ def do_complete_task(token, captcha, task_id, publication_target, wait_sec, cf=N
         raise Exception(f'apply falhou {s}: {lesson.get("message") or lesson}')
 
     questions = lesson.get("questions", [])
-    answer_id = lesson.get("answer_id") or 0
+
+    # ── FIX: answer_id pode estar nested em lesson["answer"]["id"] ──
+    answer_id = (
+        lesson.get("answer_id")
+        or (lesson.get("answer") or {}).get("id")
+        or 0
+    )
     print(f"[TASK] Questões: {len(questions)} | answer_id: {answer_id}")
 
-    ai_answers = {}
-    if questions:
-        try:
-            ai_answers = solve_questions(
-                questions,
-                lesson_title=lesson.get("title", ""),
-                lesson_description=lesson.get("description", "")
-            )
-            print(f"[IA] {len(ai_answers)} questões respondidas")
-        except Exception as e:
-            print(f"[IA] Erro: {e}")
-
-    wait = max(lesson.get('min_execution_time') or 60, wait_sec)
-    print(f"[TASK] Aguardando {wait}s...")
-    time.sleep(wait)
-    print(f"[TASK] Sleep ok, enviando...")
-
-    cap2 = solve_captcha(cookies)
-
-    if ai_answers and answer_id:
-        put_url = f'{BASE}/p/https://edusp-api.ip.tv/tms/task/{task_id}/answer/{answer_id}'
-        s_put, r_put = req(put_url, method='PUT',
-            data={
-                "status": "draft" if draft else "submitted",
-                "answers": ai_answers,
-                "accessed_on": "room",
-                "executed_on": publication_target,
-                "duration": wait
-            },
-            headers=headers_auth(token, cap2),
-            cookies=cookies)
-        print(f"[IA] PUT resposta: {s_put}")
-
-    s2, res = req(f'{BASE}/api/complete', method='POST',
-        data={
-            'x_auth_key': token, 'room_code': publication_target,
-            'lesson_id': task_id, 'draft': draft, 'lesson_info': lesson,
-            'time_spent': wait, 'answer_id': answer_id,
-            'target_score': 100, 'captchaToken': cap2,
-        },
-        headers={
-            'accept':'*/*','accept-language':'pt-BR,pt;q=0.7',
-            'content-type':'application/json',
-            'origin': BASE,'referer': BASE+'/','priority':'u=1, i',
-            'user-agent': UA,
-        },
-        cookies=cookies)
-
-    if s2 == 200:
-        return {'success': True, 'wait': wait, 'draft': draft, 'questions_answered': len(ai_answers)}
-    raise Exception(f'complete falhou {s2}: {res.get("message") or res.get("error") or res}')
-    
-    # ── RESOLVE AS QUESTÕES COM IA ─────────────────────────────
-    questions = lesson.get("questions", [])
-    answer_id = lesson.get("answer_id") or 0
-
+    # ── Resolve questões com IA (1 único request) ────────────────
     ai_answers = {}
     if questions:
         try:
@@ -426,11 +388,14 @@ def do_complete_task(token, captcha, task_id, publication_target, wait_sec, cf=N
             print(f"[IA] Erro ao resolver questões: {e}")
 
     wait = max(lesson.get('min_execution_time') or 60, wait_sec)
+    print(f"[TASK] Aguardando {wait}s...")
     time.sleep(wait)
+    print(f"[TASK] Sleep ok, enviando respostas...")
 
     cap2 = solve_captcha(cookies)
 
-    # ── SALVA AS RESPOSTAS ─────────────────────────────────────
+    # ── PUT respostas — agora só pula se answer_id for realmente 0 ──
+    put_ok = False
     if ai_answers and answer_id:
         put_url = f'{BASE}/p/https://edusp-api.ip.tv/tms/task/{task_id}/answer/{answer_id}'
         s_put, r_put = req(put_url, method='PUT',
@@ -443,9 +408,12 @@ def do_complete_task(token, captcha, task_id, publication_target, wait_sec, cf=N
             },
             headers=headers_auth(token, cap2),
             cookies=cookies)
-        print(f"[IA] PUT resposta: {s_put}")
+        print(f"[IA] PUT resposta: {s_put} | {r_put}")
+        put_ok = s_put in (200, 201, 204)
+    elif ai_answers and not answer_id:
+        print(f"[IA] AVISO: answer_id=0, PUT pulado. Lesson keys: {list(lesson.keys())}")
 
-    # ── COMPLETE NORMAL ────────────────────────────────────────
+    # ── Complete normal ──────────────────────────────────────────
     s2, res = req(f'{BASE}/api/complete', method='POST',
         data={
             'x_auth_key': token, 'room_code': publication_target,
@@ -462,8 +430,16 @@ def do_complete_task(token, captcha, task_id, publication_target, wait_sec, cf=N
         cookies=cookies)
 
     if s2 == 200:
-        return {'success': True, 'wait': wait, 'draft': draft, 'questions_answered': len(ai_answers)}
+        return {
+            'success': True,
+            'wait': wait,
+            'draft': draft,
+            'questions_answered': len(ai_answers),
+            'put_ok': put_ok,
+            'answer_id': answer_id,
+        }
     raise Exception(f'complete falhou {s2}: {res.get("message") or res.get("error") or res}')
+
 
 # ─── MODELS ──────────────────────────────────────────────────────────────────
 
@@ -487,7 +463,8 @@ class CompleteBody(BaseModel):
     cf: Optional[str] = None
     draft: bool = False
 
-# ─── ROTAS API ───────────────────────────────────────────────────────────────
+
+# ─── TURNSTILE ───────────────────────────────────────────────────────────────
 
 TURNSTILE_SECRET = "0x4AAAAAADhgE5rDE7MkSNEpTkILUhIXhgY"
 
@@ -513,6 +490,9 @@ def verify_turnstile(token):
     except Exception as e:
         print("TURNSTILE ERROR:", repr(e))
         return False
+
+
+# ─── ROTAS API ───────────────────────────────────────────────────────────────
 
 @app.post('/api/login')
 def api_login(body: LoginBody):
@@ -540,6 +520,7 @@ def api_complete(body: CompleteBody):
                                 body.publication_target, body.wait_sec, body.cf, body.draft)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 # ─── FRONTEND ────────────────────────────────────────────────────────────────
 
@@ -1393,7 +1374,7 @@ body{font-family:'Rajdhani',sans-serif;color:var(--text)}
       </div>
     </div>
     <div class="sidebar-bottom">
-      <div class="sidebar-version">v2.1 // build 2025</div>
+      <div class="sidebar-version">v2.2 // build 2025</div>
       <div class="sidebar-dev">richardzs | nep</div>
     </div>
   </nav>
@@ -1965,8 +1946,10 @@ async function runTasks(){
       const d = await r.json();
       if(r.ok && d.success){
         ok++;
-        const answered = d.questions_answered > 0 ? ` [IA: ${d.questions_answered} questões]` : '';
-        addLog('log-run','✓ '+task.title+answered,'log-ok');
+        const iaInfo = d.questions_answered > 0
+          ? ` [IA: ${d.questions_answered}q${d.put_ok ? ' ✓' : ' ✗PUT'}]`
+          : '';
+        addLog('log-run','✓ '+task.title+iaInfo,'log-ok');
       }else{
         err++;
         addLog('log-run','✗ '+(d.detail||'erro'),'log-err');
