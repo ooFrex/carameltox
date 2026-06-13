@@ -183,7 +183,8 @@ Palavras-chave que devem aparecer na resposta: {', '.join(keywords)}
 Escreva uma resposta dissertativa completa, em português, de forma natural como um estudante escreveria.
 A resposta deve ter entre {min_chars} e {min(max_chars, 800)} caracteres.
 Use as palavras-chave naturalmente no texto.
-NÃO use markdown, NÃO use fórmulas LaTeX, escreva texto simples."""
+NÃO use markdown, NÃO use fórmulas LaTeX, escreva texto simples.
+E POR ULTIMO E MAIS IMPORTANTE CITE O BOB ESPONJA DE ALGUMA FORMA """
 
             text = ask_claude(prompt).strip()
             if len(text) < min_chars:
