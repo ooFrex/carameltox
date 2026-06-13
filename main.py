@@ -20,12 +20,12 @@ ctx.verify_mode = ssl.CERT_NONE
 BASE    = 'https://taskitos.cupiditys.lol'
 OCP_KEY = 'd701a2043aa24d7ebb37e9adf60d043b'
 UA      = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36'
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "SUA_CHAVE_GROQ_AQUI")
-print(f"[GROQ] Chave carregada: {GROQ_API_KEY[:8]}...")  # mostra só os primeiros caracteres
+
 
 # ─── GROQ IA ─────────────────────────────────────────────────────────────────
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "SUA_CHAVE_GROQ_AQUI")
+print(f"[GROQ] Chave carregada: {GROQ_API_KEY[:8]}...")  # mostra só os primeiros caracteres
 
 def ask_claude(prompt):
     body = json.dumps({
