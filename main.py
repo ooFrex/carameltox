@@ -5,6 +5,7 @@ import ssl
 import time
 import base64
 import hashlib
+import os
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
@@ -19,6 +20,182 @@ ctx.verify_mode = ssl.CERT_NONE
 BASE    = 'https://taskitos.cupiditys.lol'
 OCP_KEY = 'd701a2043aa24d7ebb37e9adf60d043b'
 UA      = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36'
+
+# ─── GROQ IA ─────────────────────────────────────────────────────────────────
+
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "SUA_CHAVE_GROQ_AQUI")
+
+def ask_claude(prompt):
+    body = json.dumps({
+        "model": "llama-3.3-70b-versatile",
+        "max_tokens": 1024,
+        "messages": [{"role": "user", "content": prompt}]
+    }).encode()
+    r = urllib.request.Request(
+        "https://api.groq.com/openai/v1/chat/completions",
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+        },
+        method="POST"
+    )
+    with urllib.request.urlopen(r, context=ctx, timeout=30) as res:
+        return json.loads(res.read())["choices"][0]["message"]["content"].strip()
+
+def strip_html(html):
+    import re
+    return re.sub(r'<[^>]+>', '', html or '').strip()
+
+def solve_questions(questions, lesson_title="", lesson_description=""):
+    answers = {}
+
+    for q in questions:
+        qtype = q.get("type")
+        qid   = q.get("id")
+
+        if qtype == "info" or not q.get("required"):
+            continue
+
+        statement = strip_html(q.get("statement", ""))
+
+        # ── MÚLTIPLA ESCOLHA (single) ──────────────────────────
+        if qtype == "single":
+            opts = q.get("options", {})
+            opts_text = "\n".join(
+                f"{k}) {strip_html(v['statement'])}"
+                for k, v in opts.items()
+            )
+            prompt = f"""Você é um estudante brasileiro do ensino médio respondendo uma atividade.
+Contexto da tarefa: {lesson_title}. {lesson_description}
+
+Questão: {statement}
+
+Alternativas:
+{opts_text}
+
+Responda APENAS com o número da alternativa correta (0, 1, 2, 3 ou 4). Nada mais."""
+
+            choice = ask_claude(prompt).strip()
+            if choice not in [str(i) for i in range(len(opts))]:
+                choice = "0"
+
+            answer = {str(i): (str(i) == choice) for i in range(len(opts))}
+            answers[str(qid)] = {
+                "question_id": qid,
+                "question_type": "single",
+                "answer": answer
+            }
+
+        # ── VERDADEIRO/FALSO ───────────────────────────────────
+        elif qtype == "true-false":
+            opts = q.get("options", {})
+            opts_text = "\n".join(
+                f"{k}) {strip_html(v['statement'])}"
+                for k, v in opts.items()
+            )
+            prompt = f"""Você é um estudante brasileiro do ensino médio respondendo uma atividade.
+Contexto: {lesson_title}. {lesson_description}
+
+Questão: {statement}
+
+Afirmações (responda V para verdadeiro ou F para falso para cada uma):
+{opts_text}
+
+Responda APENAS com os valores separados por vírgula na ordem (ex: V,F,V,V,F). Nada mais."""
+
+            result = ask_claude(prompt).strip().upper()
+            vals = [v.strip() for v in result.split(",")]
+
+            answer = {}
+            for i, key in enumerate(opts.keys()):
+                v = vals[i] if i < len(vals) else "V"
+                answer[key] = (v == "V" or v == "TRUE" or v == "1")
+
+            answers[str(qid)] = {
+                "question_id": qid,
+                "question_type": "true-false",
+                "answer": answer
+            }
+
+        # ── ORDENAR PALAVRAS (cloud) ───────────────────────────
+        elif qtype == "cloud":
+            words = q.get("options", {}).get("words", [])
+            prompt = f"""Você é um estudante brasileiro do ensino médio respondendo uma atividade.
+Contexto: {lesson_title}.
+
+Questão: {statement}
+
+Ordene essas palavras para formar uma frase correta:
+{', '.join(words)}
+
+Responda APENAS com as palavras na ordem correta, separadas por vírgula. Use exatamente as palavras fornecidas, sem alterar nada."""
+
+            result = ask_claude(prompt).strip()
+            ordered = [w.strip() for w in result.split(",")]
+
+            if set(ordered) != set(words):
+                ordered = words
+
+            answers[str(qid)] = {
+                "question_id": qid,
+                "question_type": "fill-words",
+                "answer": ordered
+            }
+
+        # ── FILL-WORDS ─────────────────────────────────────────
+        elif qtype == "fill-words":
+            opts = q.get("options", {})
+            words = opts.get("words", [])
+            prompt = f"""Você é um estudante brasileiro do ensino médio respondendo uma atividade.
+Contexto: {lesson_title}.
+
+Questão: {statement}
+
+Complete as lacunas com as palavras corretas da lista:
+{', '.join(words)}
+
+Responda APENAS com as palavras nas lacunas em ordem, separadas por vírgula."""
+
+            result = ask_claude(prompt).strip()
+            ordered = [w.strip() for w in result.split(",")]
+
+            answers[str(qid)] = {
+                "question_id": qid,
+                "question_type": "fill-words",
+                "answer": ordered
+            }
+
+        # ── DISSERTATIVA (text_ai) ─────────────────────────────
+        elif qtype == "text_ai":
+            opts = q.get("options", {})
+            keywords = opts.get("ai_grading_keywords", [])
+            min_chars = opts.get("min_text_count", 100)
+            max_chars = opts.get("max_text_count", 2000)
+
+            prompt = f"""Você é um estudante brasileiro do ensino médio escrevendo uma resposta dissertativa.
+Contexto da tarefa: {lesson_title}. {lesson_description}
+
+Questão: {statement}
+
+Palavras-chave que devem aparecer na resposta: {', '.join(keywords)}
+
+Escreva uma resposta dissertativa completa, em português, de forma natural como um estudante escreveria.
+A resposta deve ter entre {min_chars} e {min(max_chars, 800)} caracteres.
+Use as palavras-chave naturalmente no texto.
+NÃO use markdown, NÃO use fórmulas LaTeX, escreva texto simples."""
+
+            text = ask_claude(prompt).strip()
+            if len(text) < min_chars:
+                text += " " + ask_claude(f"Continue essa resposta: {text}")
+
+            answers[str(qid)] = {
+                "question_id": qid,
+                "question_type": "text_ai",
+                "answer": {"0": text}
+            }
+
+    return answers
 
 # ─── HTTP UTILS ──────────────────────────────────────────────────────────────
 
@@ -162,19 +339,56 @@ def do_get_tasks(token, captcha, cf=None):
 def do_complete_task(token, captcha, task_id, publication_target, wait_sec, cf=None, draft=False):
     cookies = {'cf_clearance': cf} if cf else {}
     cap = solve_captcha(cookies)
+
     s, lesson = req(
         f'{BASE}/p/https://edusp-api.ip.tv/tms/task/{task_id}/apply/?preview_mode=false&room_code={publication_target}',
         headers=headers_auth(token, cap), cookies=cookies)
+
     if s not in (200, 304):
         raise Exception(f'apply falhou {s}: {lesson.get("message") or lesson}')
+
+    # ── RESOLVE AS QUESTÕES COM IA ─────────────────────────────
+    questions = lesson.get("questions", [])
+    answer_id = lesson.get("answer_id") or 0
+
+    ai_answers = {}
+    if questions:
+        try:
+            ai_answers = solve_questions(
+                questions,
+                lesson_title=lesson.get("title", ""),
+                lesson_description=lesson.get("description", "")
+            )
+            print(f"[IA] {len(ai_answers)} questões respondidas")
+        except Exception as e:
+            print(f"[IA] Erro ao resolver questões: {e}")
+
     wait = max(lesson.get('min_execution_time') or 60, wait_sec)
     time.sleep(wait)
+
     cap2 = solve_captcha(cookies)
+
+    # ── SALVA AS RESPOSTAS ─────────────────────────────────────
+    if ai_answers and answer_id:
+        put_url = f'{BASE}/p/https://edusp-api.ip.tv/tms/task/{task_id}/answer/{answer_id}'
+        s_put, r_put = req(put_url, method='PUT',
+            data={
+                "status": "draft" if draft else "submitted",
+                "answers": ai_answers,
+                "accessed_on": "room",
+                "executed_on": publication_target,
+                "duration": wait
+            },
+            headers=headers_auth(token, cap2),
+            cookies=cookies)
+        print(f"[IA] PUT resposta: {s_put}")
+
+    # ── COMPLETE NORMAL ────────────────────────────────────────
     s2, res = req(f'{BASE}/api/complete', method='POST',
         data={
             'x_auth_key': token, 'room_code': publication_target,
             'lesson_id': task_id, 'draft': draft, 'lesson_info': lesson,
-            'time_spent': wait, 'answer_id': lesson.get('answer_id') or 0,
+            'time_spent': wait, 'answer_id': answer_id,
             'target_score': 100, 'captchaToken': cap2,
         },
         headers={
@@ -184,8 +398,9 @@ def do_complete_task(token, captcha, task_id, publication_target, wait_sec, cf=N
             'user-agent': UA,
         },
         cookies=cookies)
+
     if s2 == 200:
-        return {'success': True, 'wait': wait, 'draft': draft}
+        return {'success': True, 'wait': wait, 'draft': draft, 'questions_answered': len(ai_answers)}
     raise Exception(f'complete falhou {s2}: {res.get("message") or res.get("error") or res}')
 
 # ─── MODELS ──────────────────────────────────────────────────────────────────
@@ -218,35 +433,32 @@ def verify_turnstile(token):
     if not token:
         print("Turnstile: token vazio")
         return False
-
     try:
         data = json.dumps({
             "secret": TURNSTILE_SECRET,
             "response": token
         }).encode()
-
         r = urllib.request.Request(
             "https://challenges.cloudflare.com/turnstile/v0/siteverify",
             data=data,
             headers={"Content-Type": "application/json"},
             method="POST"
         )
-
         with urllib.request.urlopen(r, timeout=10) as res:
             result = json.loads(res.read())
             print("TURNSTILE RESULT:", result)
             return result.get("success", False)
-
     except Exception as e:
         print("TURNSTILE ERROR:", repr(e))
         return False
 
 @app.post('/api/login')
 def api_login(body: LoginBody):
-    if body.turnstile_token and not verify_turnstile(body.turnstile_token):
-        raise HTTPException(status_code=403, detail='Verificação Cloudflare falhou.')
-    # sem token = vem da extensão ✓
-
+    if not verify_turnstile(body.turnstile_token):
+        raise HTTPException(
+            status_code=403,
+            detail='Verificação Cloudflare falhou. Recarregue a página.'
+        )
     try:
         return do_login(body.ra, body.senha, body.cf)
     except Exception as e:
@@ -372,7 +584,6 @@ body{font-family:'Rajdhani',sans-serif;color:var(--text)}
 }
 
 /* ── LOGIN SCREEN ─────────────────────────── */
-/* IMPORTANTE: display:flex por padrão — visível quando cf-screen some */
 #login-screen{
   position:fixed;inset:0;z-index:1000;
   display:flex;align-items:center;justify-content:center;
@@ -394,7 +605,6 @@ body{font-family:'Rajdhani',sans-serif;color:var(--text)}
   position:relative;z-index:2;
 }
 
-/* Left branding */
 .login-left{
   width:340px;flex-shrink:0;
   background:linear-gradient(145deg,#0c0022 0%,#070015 50%,#020008 100%);
@@ -450,7 +660,6 @@ body{font-family:'Rajdhani',sans-serif;color:var(--text)}
   border-radius:50%;flex-shrink:0;box-shadow:0 0 6px var(--red);
 }
 
-/* Right form */
 .login-right{
   flex:1;background:var(--surface);padding:48px 40px;
   display:flex;flex-direction:column;justify-content:center;
@@ -994,17 +1203,12 @@ body{font-family:'Rajdhani',sans-serif;color:var(--text)}
 </head>
 <body>
 
-<!-- Overlays (z-index baixo) -->
 <div class="bg-scanline"></div>
 <div class="bg-glow"></div>
-
-<!-- Particles -->
 <canvas id="particles"></canvas>
-
-<!-- Notifications -->
 <div id="notif-stack"></div>
 
-<!-- ── CF / TURNSTILE ──────────────────────────────────────────── -->
+<!-- TURNSTILE -->
 <div id="cf-screen">
   <div class="cf-ring"></div>
   <div class="cf-wordmark">NEP <strong>SOLUTIONS</strong></div>
@@ -1018,7 +1222,7 @@ body{font-family:'Rajdhani',sans-serif;color:var(--text)}
 </div>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 
-<!-- ── LOGIN SCREEN ───────────────────────────────────────────── -->
+<!-- LOGIN -->
 <div id="login-screen">
   <div class="login-container">
     <div class="login-left">
@@ -1032,7 +1236,7 @@ body{font-family:'Rajdhani',sans-serif;color:var(--text)}
       <div class="brand-divider"></div>
       <ul class="brand-features">
         <li>Automação de Tarefas SP</li>
-        <li>Interface Futurista Premium</li>
+        <li>IA Groq integrada</li>
         <li>Segurança CMSP nativa</li>
         <li>Redação Paulista (em breve)</li>
         <li>Provas automatizadas (em breve)</li>
@@ -1065,7 +1269,7 @@ body{font-family:'Rajdhani',sans-serif;color:var(--text)}
   </div>
 </div>
 
-<!-- ── APP ────────────────────────────────────────────────────── -->
+<!-- APP -->
 <div id="app">
   <nav class="sidebar">
     <div class="logo-area">
@@ -1261,7 +1465,6 @@ body{font-family:'Rajdhani',sans-serif;color:var(--text)}
 
       <!-- TASKS -->
       <div class="page" id="page-tasks">
-        <!-- Step: login/fetch -->
         <div class="step active" id="step-login">
           <div style="max-width:480px;margin:0 auto">
             <div style="margin-bottom:28px">
@@ -1293,7 +1496,6 @@ body{font-family:'Rajdhani',sans-serif;color:var(--text)}
           </div>
         </div>
 
-        <!-- Step: task list -->
         <div class="step" id="step-tasks">
           <div id="welcome-banner" class="welcome-banner"></div>
           <div class="task-actions">
@@ -1325,7 +1527,6 @@ body{font-family:'Rajdhani',sans-serif;color:var(--text)}
           </div>
         </div>
 
-        <!-- Step: running -->
         <div class="step" id="step-running">
           <div class="card">
             <div class="card-top"><div class="card-dot"></div><div class="card-title">Execução em andamento</div></div>
@@ -1335,7 +1536,6 @@ body{font-family:'Rajdhani',sans-serif;color:var(--text)}
           </div>
         </div>
 
-        <!-- Step: done -->
         <div class="step" id="step-done">
           <div class="card">
             <div class="card-top"><div class="card-dot"></div><div class="card-title">Operação concluída</div></div>
@@ -1383,12 +1583,11 @@ body{font-family:'Rajdhani',sans-serif;color:var(--text)}
         </div>
       </div>
 
-    </div><!-- /content -->
-  </div><!-- /main -->
-</div><!-- /app -->
+    </div>
+  </div>
+</div>
 
 <script>
-// ── PARTICLES ────────────────────────────────────────────────────
 (function(){
   const c = document.getElementById('particles');
   const ctx = c.getContext('2d');
@@ -1418,7 +1617,6 @@ body{font-family:'Rajdhani',sans-serif;color:var(--text)}
   draw();
 })();
 
-// ── STATE ────────────────────────────────────────────────────────
 const state = {
   token:'', captcha:'', cf:'',
   nome:'', ra:'', escola:'',
@@ -1426,18 +1624,14 @@ const state = {
   waitSec:90, draft:false, loggedIn:false
 };
 
-// ── TURNSTILE ────────────────────────────────────────────────────
 let turnstileToken = null;
-
 function onTurnstileSuccess(token){
   turnstileToken = token;
   const s = document.getElementById('cf-screen');
   s.classList.add('hidden');
-  // After fade-out, hide entirely so it can't block clicks
   setTimeout(() => { s.style.display='none'; }, 1000);
 }
 
-// ── HELPERS ──────────────────────────────────────────────────────
 function safeText(id, val){
   const el = document.getElementById(id);
   if(el) el.textContent = val;
@@ -1453,9 +1647,7 @@ function notify(msg, type='ok', dur=4000){
   setTimeout(()=>{ d.style.transition='opacity .4s'; d.style.opacity='0'; setTimeout(()=>d.remove(),400); }, dur);
 }
 
-// ── NAV ──────────────────────────────────────────────────────────
 let currentPage = 'home';
-
 function navTo(page, el){
   document.querySelectorAll('.page').forEach(p => {
     const isTarget = p.id === 'page-'+page;
@@ -1468,14 +1660,12 @@ function navTo(page, el){
   currentPage = page;
 }
 
-// ── STEP MANAGEMENT ──────────────────────────────────────────────
 function showStep(id){
   document.querySelectorAll('.step').forEach(s => {
     s.classList.toggle('active', s.id === id);
   });
 }
 
-// ── PASSWORD TOGGLE ──────────────────────────────────────────────
 let loginPwVisible = false;
 function toggleLoginPw(){
   loginPwVisible = !loginPwVisible;
@@ -1494,9 +1684,7 @@ function togglePw(){
   if(b) b.textContent = pwVisible ? '🙈' : '👁';
 }
 
-// ── LOGIN ─────────────────────────────────────────────────────────
 async function doLogin(){
-  // Collect RA/senha from whichever inputs are filled
   const ra = (document.getElementById('login-ra')?.value?.trim()) ||
              (document.getElementById('ra')?.value?.trim()) || '';
   const senha = (document.getElementById('login-senha')?.value?.trim()) ||
@@ -1506,11 +1694,9 @@ async function doLogin(){
 
   if(!ra || !senha){ notify('Preencha RA e senha!','err'); return; }
 
-  // Mirror to both sets of inputs
   ['ra','login-ra'].forEach(id => { const el=document.getElementById(id); if(el) el.value=ra; });
   ['senha','login-senha'].forEach(id => { const el=document.getElementById(id); if(el) el.value=senha; });
 
-  // Disable buttons
   ['btn-login','btn-fetch'].forEach(id => {
     const el = document.getElementById(id);
     if(el){ el.disabled=true; el.textContent='AGUARDE...'; }
@@ -1531,7 +1717,6 @@ async function doLogin(){
       resetBtns(); return;
     }
 
-    // Save state
     state.token   = d.token   || '';
     state.captcha = d.captcha || '';
     state.nome    = d.nome    || 'Estudante';
@@ -1574,21 +1759,15 @@ function updateStudentUI(){
 }
 
 function showApp(){
-  // Hide login
   const login = document.getElementById('login-screen');
   login.classList.add('out');
   setTimeout(()=>{ login.style.display='none'; }, 700);
-
-  // Show app
   const app = document.getElementById('app');
   app.style.display = 'flex';
   app.classList.add('visible');
-
-  // Navigate to tasks page
   navTo('tasks', document.querySelectorAll('.nav-item')[1]);
 }
 
-// ── FETCH TASKS ──────────────────────────────────────────────────
 async function fetchTasks(){
   try{
     const r = await fetch('/api/tasks',{
@@ -1668,7 +1847,6 @@ function selectAll(){
   });
 }
 
-// ── SETTINGS ─────────────────────────────────────────────────────
 function setSpeed(s, b){
   state.waitSec=s;
   document.querySelectorAll('.opts-grid .opt-btn').forEach(x=>x.classList.remove('active'));
@@ -1684,7 +1862,6 @@ function setMode(isDraft, b){
   if(btn) btn.textContent=isDraft?'SALVAR RASCUNHO →':'COMPLETAR SELECIONADAS →';
 }
 
-// ── RUN ──────────────────────────────────────────────────────────
 async function runTasks(){
   if(!state.selected.size){ notify('Selecione ao menos uma atividade','err'); return; }
 
@@ -1726,7 +1903,8 @@ async function runTasks(){
       const d = await r.json();
       if(r.ok && d.success){
         ok++;
-        addLog('log-run','✓ '+task.title,'log-ok');
+        const answered = d.questions_answered > 0 ? ` [IA: ${d.questions_answered} questões]` : '';
+        addLog('log-run','✓ '+task.title+answered,'log-ok');
       }else{
         err++;
         addLog('log-run','✗ '+(d.detail||'erro'),'log-err');
@@ -1755,7 +1933,6 @@ function addLog(elId, msg, cls=''){
   el.scrollTop=el.scrollHeight;
 }
 
-// ── STATUS ───────────────────────────────────────────────────────
 function setStatus(s){
   const pill=document.getElementById('status-pill');
   const txt=document.getElementById('status-text');
